@@ -30,7 +30,7 @@ Meist ruft `tool/release.sh` des Projekts diese Befehle auf. Projekt-Einstellung
 
 ```bash
 test/run.sh        # Tests (temporäre Repos, kein Flutter nötig)
-shellcheck -x bin/werkbank lib/common.sh install.sh test/run.sh
+shellcheck -x bin/werkbank lib/common.sh install.sh test/run.sh werkbank.conf.example && shellcheck -e SC1091 release.sh.example
 ```
 
 Neue Fassung: Tag `vX.Y.Z` setzen, `install.sh` je Projekt laufen lassen, je Projekt ein PR.

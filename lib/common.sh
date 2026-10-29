@@ -60,15 +60,18 @@ wb_layout() {
   local top media
   top=$(git ls-files | cut -d/ -f1 | sort -u | grep -vE "$top_re" || true)
   media=$(git ls-files | grep -iE "\\.(${WB_MEDIA_EXT})\$" | grep -vE "$media_re" || true)
-  [ -z "$top" ] || die "unknown top-level entries (STANDARD.md, Ordnerstruktur): $(tr '\n' ' ' <<<"$top")"
-  [ -z "$media" ] || die "media outside their folders (STANDARD.md, Ordnerstruktur): $(tr '\n' ' ' <<<"$media")"
+  # Both lists at once, so one run shows everything to move.
+  [ -z "$top" ] || printf '\033[1;31merror:\033[0m unknown top-level entries (STANDARD.md, Ordnerstruktur): %s\n' "$(tr '\n' ' ' <<<"$top")" >&2
+  [ -z "$media" ] || printf '\033[1;31merror:\033[0m media outside their folders (STANDARD.md, Ordnerstruktur): %s\n' "$(tr '\n' ' ' <<<"$media")" >&2
+  [ -z "$top$media" ] || exit 1
 }
 
 # ---------------------------------------------------------------------------
 # Checks
 
-# The checks of the pull request CI, run before every push. --quick skips the
-# project's verify_extra (builds and other slow steps).
+# The checks of the pull request CI, run before every push. Project hooks:
+# verify_quick_extra runs always (checks the CI runs too, e.g. other test
+# suites), verify_extra only without --quick (builds and other slow steps).
 wb_verify() {
   local quick=false
   [ "${1:-}" = --quick ] && quick=true
@@ -95,6 +98,9 @@ wb_verify() {
   say "Tests"
   # shellcheck disable=SC2086
   flutter test --no-pub $WB_TEST_ARGS
+  if wb_has_hook verify_quick_extra; then
+    verify_quick_extra
+  fi
   if $quick; then
     say "Quick check green"
     return 0

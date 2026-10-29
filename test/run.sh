@@ -40,6 +40,11 @@ add docs/shot.png
 expect_fail "layout: image loose in docs/" layout
 git -C "$repo" rm -q --cached docs/shot.png
 
+add notes.txt
+add docs/shot.png
+check "layout: reports top-level and media problems together" '! "$wb" layout 2>err; grep -q notes.txt err && grep -q docs/shot.png err'
+git -C "$repo" rm -q --cached notes.txt docs/shot.png
+
 add tool/case.stl
 expect_fail "layout: model in tool/" layout
 mkdir -p "$repo/tool"
@@ -53,6 +58,9 @@ expect_ok "layout: WB_TOP_EXTRA allows it" layout
 
 printf 'WB_APP=demo\n' >>"$repo/tool/werkbank.conf"
 check "doctor reads the conf" '"$wb" doctor 2>/dev/null | grep -q "app demo, version 1.2.3+45"'
+
+printf 'verify_quick_extra() { echo quick-hook; }\nverify_extra() { echo slow-hook; }\n' >>"$repo/tool/werkbank.conf"
+check "hooks are loaded from the conf" '. "$(dirname "$wb")/../lib/common.sh"; wb_load_conf; wb_has_hook verify_quick_extra && wb_has_hook verify_extra'
 
 expect_fail "android without key.properties" android
 expect_fail "unknown command" frobnicate

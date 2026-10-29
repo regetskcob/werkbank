@@ -1,3 +1,4 @@
+# shellcheck shell=bash disable=SC2034
 # Settings for tool/werkbank (bash, sourced). Everything is optional.
 # See STANDARD.md in tool/werkbank/, "werkbank.conf".
 
@@ -22,7 +23,13 @@
 #android_args() { echo --obfuscate --split-debug-info=build/symbols/android; }
 #ios_args() { echo --obfuscate --split-debug-info=build/symbols/ios; }
 
-# Further checks after the tests of werkbank verify (not with --quick).
+# Further checks after the tests that the CI runs too (also with --quick).
+#verify_quick_extra() {
+#  say "Parser tests"
+#  node --test supabase/tests/
+#}
+
+# Further slow checks after the tests (not with --quick).
 #verify_extra() {
 #  say "Web build"
 #  flutter build web --release --no-pub >/dev/null

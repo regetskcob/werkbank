@@ -42,6 +42,7 @@ store/
   raw/<gerät>/<de|en>/             Rohaufnahmen vor dem Rahmen (gerät: iphone, ipad, android-phone,
                                    android-tablet, mac, …); Querformat als <de|en>-land
   graphics/                        Banner, OG-Bilder und andere Store-Grafiken
+  social/                          Beiträge für soziale Medien (optional)
   release/<version>/               Archiv hochgeladener Builds (immer ignoriert)
   archiv/                          alte Läufe, Sicherungen, Logs (immer ignoriert)
 ```
@@ -51,13 +52,14 @@ App-Sprache (`de`, `en`).
 
 ## Ablauf
 
-Jedes Projekt hat **einen** Einstieg `tool/release.sh <befehl>`. Die gemeinsamen Schritte
+Jedes Projekt hat **einen** Einstieg `tool/release.sh <befehl>` (Vorlage:
+`release.sh.example` im werkbank-Repo). Die gemeinsamen Schritte
 ruft es über `tool/werkbank/bin/werkbank` auf; was nur das Projekt hat (Add-on, Box,
 Watch-App, Seiten-Deploy), steht als eigener Befehl daneben.
 
 | Befehl | Was | Quelle |
 |---|---|---|
-| `verify` | vor jedem Push: Layout, Übersetzungen, Format, Analyse, Tests, dann `verify_extra` | `werkbank verify` |
+| `verify` | vor jedem Push: Layout, Übersetzungen, Format, Analyse, Tests, dann die Hooks `verify_quick_extra` und `verify_extra` | `werkbank verify` |
 | `android` | signiertes AAB nach `build/release/<app>-<version>.aab`, Prüfung gegen den Debug-Schlüssel, Symbole wegsichern | `werkbank android` |
 | `ios` | IPA nach `build/release/<app>-<version>.ipa`, mit `--upload` zu App Store Connect | `werkbank ios` |
 | `shots` | Rohaufnahmen nach `store/raw/` | Projekt (Simulator über `werkbank sim`) |
@@ -94,7 +96,8 @@ optional; Vorlage: `werkbank.conf.example` im werkbank-Repo.
 | `WB_ANALYZE_ARGS`, `WB_TEST_ARGS` | – | zusätzliche Argumente |
 | `WB_SYMBOLS_DIR` | `~/keys/symbols/<app>` | Ziel für Debug-Symbole |
 | `android_args`, `ios_args` | – | Funktionen, die Build-Argumente ausgeben |
-| `verify_extra` | – | Funktion mit weiteren Prüfungen (Web-Build, Server, Hugo) |
+| `verify_quick_extra` | – | Funktion mit weiteren Prüfungen, die auch die CI macht (läuft auch bei `--quick`) |
+| `verify_extra` | – | Funktion mit langsamen Prüfungen (Web-Build, Server, Hugo; nicht bei `--quick`) |
 
 ## werkbank aktualisieren
 
