@@ -14,7 +14,7 @@
 #   werkbank site <folder> <base URL> [blog <subfolder> [--push]]
 #                                      build a Hugo site into build/site/<folder>/,
 #                                      optionally copy it into the blog repository
-#   werkbank collect aab|apk|ipa <path>
+#   werkbank collect aab|apk|ipa <path> [variant]
 #                                      take a bundle built elsewhere (fastlane) into
 #                                      build/release/, AAB/APK checked like above
 #   werkbank symbols <platform>        keep build/symbols/<platform> outside the repo
@@ -24,15 +24,15 @@
 #                                      com.apple.CoreSimulator.SimDeviceType.iPhone-16-Pro-Max iOS)
 #   werkbank doctor                    which tools and keys are there
 #
-# Run from anywhere inside the repository. Project settings come from
+# Works from any directory: a copy in tool/werkbank/ always acts on its own
+# project. Project settings come from
 # tool/werkbank.conf (a bash file, see STANDARD.md); tool/werkbank/ itself is a
 # copy of the werkbank repository and is never edited in the project.
 set -euo pipefail
 
-WB_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 # shellcheck source-path=SCRIPTDIR/..
 # shellcheck source=lib/common.sh
-. "$WB_HOME/lib/common.sh"
+. "$(dirname "${BASH_SOURCE[0]}")/../lib/common.sh"
 
 wb_enter_repo
 wb_load_conf

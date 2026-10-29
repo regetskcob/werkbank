@@ -84,6 +84,12 @@ expect_fail "collect: missing file" collect ipa nothing.ipa
 echo ipa >"$tmp/x.ipa"
 check "collect ipa copies to build/release" '"$wb" collect ipa "$tmp/x.ipa" && [ -f build/release/demo-1.2.3+45.ipa ]'
 
+check "collect with variant" '"$wb" collect ipa "$tmp/x.ipa" wear && [ -f build/release/demo-wear-1.2.3+45.ipa ]'
+mkdir -p "$repo/tool/werkbank"
+cp -R "$(dirname "$wb")/../bin" "$(dirname "$wb")/../lib" "$repo/tool/werkbank/"
+check "a copy in tool/werkbank acts on its project from anywhere" 'cd / && "$repo/tool/werkbank/bin/werkbank" version | grep -q 1.2.3+45'
+rm -rf "$repo/tool/werkbank"
+
 expect_fail "android without key.properties" android
 expect_fail "unknown command" frobnicate
 

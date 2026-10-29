@@ -7,11 +7,20 @@ say() { printf '\033[1;32m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33mwarning:\033[0m %s\n' "$*" >&2; }
 die() { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 
-# The repository root of the current directory, so every path below is
-# relative to it.
+# Where this werkbank lives: tool/werkbank/ inside a project, or a checkout
+# of the werkbank repository itself.
+WB_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+
+# The project root, so every path below is relative to it: the repository
+# that holds this copy (tool/werkbank/), whatever the current directory; for
+# the werkbank checkout itself the repository of the current directory.
 wb_enter_repo() {
   local root
-  root=$(git rev-parse --show-toplevel 2>/dev/null) || die "not inside a git repository"
+  if [ "$(basename "$WB_HOME")" = werkbank ] && [ "$(basename "$(dirname "$WB_HOME")")" = tool ]; then
+    root=$(cd "$WB_HOME/../.." && pwd)
+  else
+    root=$(git rev-parse --show-toplevel 2>/dev/null) || die "not inside a git repository"
+  fi
   cd "$root" || die "cannot enter $root"
 }
 
@@ -57,9 +66,9 @@ wb_env_file() {
 # Folder structure
 
 # Top-level entries every app repository may have (STANDARD.md, "Ordnerstruktur").
-WB_TOP_BASE='\.claude|\.github|\.gitignore|\.gitattributes|\.metadata|\.vscode|\.mcp\.json|CLAUDE\.md|README\.md|LICENSE|CHANGELOG(\.[a-z]{2})?\.md|analysis_options\.yaml|dart_test\.yaml|build\.yaml|l10n\.yaml|pubspec\.(yaml|lock)|Gemfile(\.lock)?|package(-lock)?\.json|android|ios|macos|linux|windows|web|lib|test|integration_test|test_driver|assets|docs|tool|store|site|supabase'
+WB_TOP_BASE='\.claude|\.github|\.gitignore|\.gitattributes|\.metadata|\.vscode|\.mcp\.json|CLAUDE\.md|README\.md|LICENSE|CHANGELOG(\.[a-z]{2})?\.md|analysis_options\.yaml|dart_test\.yaml|build\.yaml|l10n\.yaml|pubspec\.(yaml|lock)|Gemfile(\.lock)?|package(-lock)?\.json|android|ios|macos|linux|windows|tvos|watchos|web|lib|test|integration_test|test_driver|assets|docs|tool|store|site|supabase'
 # Where images, PDFs, videos, models, archives and app binaries may live.
-WB_MEDIA_BASE='(android|ios|macos|linux|windows|web|assets|store)/|site/(static|assets)/|docs/(images|pdf)/|(test|integration_test)/(.*/)?goldens/'
+WB_MEDIA_BASE='(android|ios|macos|linux|windows|tvos|watchos|web|assets|store)/|site/(static|assets)/|docs/(images|pdf)/|(test|integration_test)/(.*/)?goldens/'
 WB_MEDIA_EXT='png|jpe?g|gif|webp|heic|psd|pdf|mp4|mov|stl|step|3mf|zip|xz|aab|apk|ipa'
 
 wb_layout() {
@@ -179,8 +188,9 @@ wb_symbols() {
   say "Debug symbols kept in $target/$platform"
 }
 
-# Release file name: build/release/<app>-<version>.<ext>
-wb_release_path() { echo "build/release/$WB_APP-$(wb_version).$1"; }
+# Release file name: build/release/<app>[-<variant>]-<version>.<ext>; the
+# variant tells apart several bundles of one version (phone, wear, …).
+wb_release_path() { echo "build/release/$WB_APP${2:+-$2}-$(wb_version).$1"; }
 
 # Signed App Bundle. Arguments after -- go to flutter build appbundle, after
 # those of the project's android_args hook.
@@ -240,16 +250,17 @@ wb_ios() {
 }
 
 # Takes a bundle built elsewhere (e.g. by fastlane) into build/release/: an
-# AAB/APK is checked against the debug key first. $1: aab, apk or ipa, $2: path.
+# AAB/APK is checked against the debug key first. $1: aab, apk or ipa, $2:
+# path, $3: optional variant for the file name.
 wb_collect() {
-  local ext=${1:?aab, apk or ipa} src=${2:?path to the file} out
+  local ext=${1:?aab, apk or ipa} src=${2:?path to the file} variant=${3:-} out
   [ -f "$src" ] || die "$src missing"
   case "$ext" in
     aab | apk) wb_check_signature "$src" ;;
     ipa) ;;
     *) die "werkbank collect aab|apk|ipa <path>" ;;
   esac
-  out=$(wb_release_path "$ext")
+  out=$(wb_release_path "$ext" "$variant")
   mkdir -p build/release
   cp "$src" "$out"
   say "Release file: $out"

@@ -15,7 +15,7 @@ lehnt unbekannte Einträge auf oberster Ebene und Medien außerhalb ihrer Ordner
 | `test/` | Unit-, Widget- und Golden-Tests; Goldens in einem Unterordner `goldens/` |
 | `integration_test/`, `test_driver/` | Tests auf Gerät oder Simulator, Store-Aufnahmen, Driver-Einstiege |
 | `assets/` | Dateien, die in die App gebündelt werden – nur die |
-| `android/`, `ios/`, `macos/`, `linux/`, `windows/`, `web/` | Plattformprojekte (Flutter-Standard) |
+| `android/`, `ios/`, `macos/`, `linux/`, `windows/`, `web/`, `tvos/`, `watchos/` | Plattformprojekte (Flutter-Standard, tvOS/watchOS über die Flutter-Forks) |
 | `docs/` | Doku als Markdown; Bilder in `docs/images/<thema>/`, gedruckte Dokumente in `docs/pdf/` (Quellen und `build.sh` in `docs/pdf/<dokument>/`) |
 | `tool/` | Skripte des Projekts; ein Werkzeug mit mehreren Dateien bekommt einen eigenen Ordner. `tool/werkbank/` ist die Kopie der werkbank, `tool/werkbank.conf` ihre Einstellung |
 | `store/` | Alles für die Stores (Aufbau unten). Eingecheckt, außer das Projekt hält es privat – dann in `.gitignore`, und die `CLAUDE.md` sagt es |
@@ -63,7 +63,7 @@ Watch-App, Seiten-Deploy), steht als eigener Befehl daneben.
 | Befehl | Was | Quelle |
 |---|---|---|
 | `verify` | vor jedem Push: Layout, Übersetzungen, Format, Analyse, Tests, dann die Hooks `verify_quick_extra` und `verify_extra` | `werkbank verify` |
-| `android` | signiertes AAB (baut fastlane, nimmt `werkbank collect aab` es auf) nach `build/release/<app>-<version>.aab`, Prüfung gegen den Debug-Schlüssel, Symbole wegsichern | `werkbank android` |
+| `android` | signiertes AAB (baut fastlane oder ein Projektskript, nimmt `werkbank collect aab <pfad> [variante]` es auf) nach `build/release/<app>-<version>.aab`, Prüfung gegen den Debug-Schlüssel, Symbole wegsichern | `werkbank android` |
 | `ios` | IPA nach `build/release/<app>-<version>.ipa`, mit `--upload` zu App Store Connect | `werkbank ios` |
 | `shots` | Rohaufnahmen nach `store/raw/` | Projekt (Simulator über `werkbank sim`) |
 | `graphics` | aus `store/raw/` die fertigen Bilder in `store/<plattform>/…` | Projekt |
