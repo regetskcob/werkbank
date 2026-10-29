@@ -16,6 +16,9 @@
 #WB_ANALYZE_ARGS=''
 #WB_TEST_ARGS='--exclude-tags golden'
 
+# Hugo sites checked by werkbank verify (default: site if site/hugo.toml exists).
+#WB_SITE_DIRS='site teaser'
+
 # Where debug symbols of release builds are kept (default ~/keys/symbols/<app>).
 #WB_SYMBOLS_DIR=~/keys/symbols/my-app
 

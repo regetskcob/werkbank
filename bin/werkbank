@@ -11,6 +11,9 @@
 #   werkbank ios [--upload] [-- <flutter args>]
 #                                      IPA, copied to build/release/; --upload sends
 #                                      it to App Store Connect (API key)
+#   werkbank site <folder> <base URL> [blog <subfolder> [--push]]
+#                                      build a Hugo site into build/site/<folder>/,
+#                                      optionally copy it into the blog repository
 #   werkbank symbols <platform>        keep build/symbols/<platform> outside the repo
 #   werkbank sim <name> <device type> <runtime>
 #                                      find or create the simulator, boot it, print
@@ -40,7 +43,12 @@ case "$cmd" in
   android) wb_android "$@" ;;
   ios) wb_ios "$@" ;;
   symbols) wb_symbols "${1:?platform}" ;;
+  site)
+    out=$(wb_site_build "${1:?site folder}" "${2:?base URL}")
+    say "Built $out"
+    if [ "${3:-}" = blog ]; then wb_site_blog "$out" "${4:?folder below static/}" "${@:5}"; fi
+    ;;
   sim) wb_sim "$@" ;;
   doctor) wb_doctor ;;
-  *) sed -n '2,24p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 2 ;;
+  *) sed -n '2,27p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac

@@ -64,12 +64,29 @@ Watch-App, Seiten-Deploy), steht als eigener Befehl daneben.
 | `ios` | IPA nach `build/release/<app>-<version>.ipa`, mit `--upload` zu App Store Connect | `werkbank ios` |
 | `shots` | Rohaufnahmen nach `store/raw/` | Projekt (Simulator über `werkbank sim`) |
 | `graphics` | aus `store/raw/` die fertigen Bilder in `store/<plattform>/…` | Projekt |
+| `site` | Landingpage bauen und ausliefern | `werkbank site` (Abschnitt Landingpages) |
 
 - **Version** nur in `pubspec.yaml` (`x.y.z+build`); Skripte lesen sie mit `werkbank version`.
 - **CI** läuft auf Pull Requests (Linux) mit denselben Schritten wie `verify --quick`; teure
   Builds (macOS, Windows) nur auf Tag oder von Hand. Release-Builds entstehen lokal.
 - **Ausgaben:** Erzeugtes nach `build/`, Release-Dateien nach `build/release/`, Symbole von
   `--split-debug-info` nach `~/keys/symbols/<app>/<version>/<plattform>/`.
+
+## Landingpages
+
+Jede App hat ihre Landingpage in `site/` (Hugo, Horizont als Hugo-Modul, Hugo 0.154.5 wie
+in allen Workflows). Bauen und Prüfen ist überall gleich, nur das Ziel unterscheidet sich:
+
+| Schritt | Wie |
+|---|---|
+| Prüfen | `werkbank verify` baut alle `WB_SITE_DIRS` (ohne `--quick`) |
+| Bauen | `werkbank site site <baseURL>` → `build/site/site/` |
+| Ausliefern in den Blog | `werkbank site site https://www.regetskcob.de/<app>/ blog <app> [--push]` → `regetskcob.github.io/static/<app>/` |
+| Ausliefern per Workflow | GitHub Pages oder FTPS im Workflow des Projekts, mit denselben Hugo-Aufrufen |
+
+Projekt-Befehl ist `tool/release.sh site [--push]`. Ziele heute: KNX Monitor und Jagdaufseher
+im Blog (KNX zusätzlich `teaser/` auf knx-monitor.de per `gh-pages`), Panzergefecht per
+GitHub-Pages-Workflow, Kalkar kompakt im eigenen Repo `landing-page` per FTPS.
 
 ## Schlüssel und Geheimnisse
 
@@ -95,6 +112,7 @@ optional; Vorlage: `werkbank.conf.example` im werkbank-Repo.
 | `WB_FORMAT_PATHS` | `lib test` | Pfade für `dart format` |
 | `WB_ANALYZE_ARGS`, `WB_TEST_ARGS` | – | zusätzliche Argumente |
 | `WB_SYMBOLS_DIR` | `~/keys/symbols/<app>` | Ziel für Debug-Symbole |
+| `WB_SITE_DIRS` | `site`, wenn `site/hugo.toml` da ist | Hugo-Seiten, die `verify` baut |
 | `android_args`, `ios_args` | – | Funktionen, die Build-Argumente ausgeben |
 | `verify_quick_extra` | – | Funktion mit weiteren Prüfungen, die auch die CI macht (läuft auch bei `--quick`) |
 | `verify_extra` | – | Funktion mit langsamen Prüfungen (Web-Build, Server, Hugo; nicht bei `--quick`) |

@@ -62,6 +62,16 @@ check "doctor reads the conf" '"$wb" doctor 2>/dev/null | grep -q "app demo, ver
 printf 'verify_quick_extra() { echo quick-hook; }\nverify_extra() { echo slow-hook; }\n' >>"$repo/tool/werkbank.conf"
 check "hooks are loaded from the conf" '. "$(dirname "$wb")/../lib/common.sh"; wb_load_conf; wb_has_hook verify_quick_extra && wb_has_hook verify_extra'
 
+web="$tmp/blog"
+git init -q "$web"
+mkdir -p "$tmp/built/a" "$web/static/demo/keep"
+echo new >"$tmp/built/a/index.html"
+echo old >"$web/static/demo/stale.html"
+echo kept >"$web/static/demo/keep/x.html"
+check "site blog copies, deletes stale files, keeps --keep" \
+  '. "$(dirname "$wb")/../lib/common.sh"; wb_load_conf; WEBSITE_REPO="$web" wb_site_blog "$tmp/built" demo --keep /keep/ &&
+   [ -f "$web/static/demo/a/index.html" ] && [ ! -e "$web/static/demo/stale.html" ] && [ -f "$web/static/demo/keep/x.html" ]'
+
 expect_fail "android without key.properties" android
 expect_fail "unknown command" frobnicate
 

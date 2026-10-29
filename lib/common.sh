@@ -25,6 +25,7 @@ wb_load_conf() {
   WB_TEST_ARGS=""
   WB_ANALYZE_ARGS=""
   WB_SYMBOLS_DIR=""
+  WB_SITE_DIRS=""
   if [ -f tool/werkbank.conf ]; then
     # shellcheck disable=SC1091
     . tool/werkbank.conf
@@ -32,6 +33,7 @@ wb_load_conf() {
   [ -n "$WB_APP" ] || WB_APP=$(sed -n 's/^name: *//p' pubspec.yaml 2>/dev/null | head -1)
   [ -n "$WB_APP" ] || WB_APP=$(basename "$PWD")
   [ -n "$WB_SYMBOLS_DIR" ] || WB_SYMBOLS_DIR="$HOME/keys/symbols/$WB_APP"
+  if [ -z "$WB_SITE_DIRS" ] && [ -f site/hugo.toml ]; then WB_SITE_DIRS=site; fi
 }
 
 # Whether the project defined the hook function $1 in its conf.
@@ -108,6 +110,7 @@ wb_verify() {
   if wb_has_hook verify_extra; then
     verify_extra
   fi
+  wb_site_check
   say "All green"
 }
 
@@ -238,6 +241,64 @@ wb_asc_key() {
 }
 
 # ---------------------------------------------------------------------------
+# Landing pages (Hugo with the Horizont module, STANDARD.md "Landingpages")
+
+# Builds every site of WB_SITE_DIRS into a throwaway folder (part of verify
+# without --quick); skipped with a warning when hugo is missing.
+wb_site_check() {
+  local dir
+  [ -n "$WB_SITE_DIRS" ] || return 0
+  if ! command -v hugo >/dev/null; then
+    warn "hugo missing – sites not checked"
+    return 0
+  fi
+  for dir in $WB_SITE_DIRS; do
+    say "Site $dir"
+    hugo --quiet --source "$dir" --destination "$(mktemp -d)" >/dev/null
+  done
+}
+
+# Builds the site in folder $1 for base URL $2 into build/site/<folder>/ and
+# prints that path. Further arguments go to hugo.
+wb_site_build() {
+  local dir=${1:?site folder} url=${2:?base URL} out
+  shift 2
+  out="$PWD/build/site/$dir"
+  rm -rf "$out"
+  mkdir -p "$out"
+  hugo --quiet --source "$dir" --minify --baseURL "$url" --destination "$out" --cleanDestinationDir "$@" >/dev/null
+  echo "$out"
+}
+
+# Copies the built site $1 into the blog repository (WEBSITE_REPO, default
+# ~/dev/website/regetskcob.github.io) under static/$2/, which serves it at
+# www.regetskcob.de/$2/. Options: --keep <pattern> (rsync exclude, kept on the
+# server side, repeatable), --push (commit and push the blog repository).
+wb_site_blog() {
+  local src=${1:?built site} sub=${2:?folder below static/} push=false web
+  shift 2
+  local keep=()
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --keep) keep+=(--exclude "$2"); shift 2 ;;
+      --push) push=true; shift ;;
+      *) die "wb_site_blog: unknown option $1" ;;
+    esac
+  done
+  web=${WEBSITE_REPO:-$HOME/dev/website/regetskcob.github.io}
+  [ -d "$web/.git" ] || die "blog repository $web missing (WEBSITE_REPO)"
+  mkdir -p "$web/static/$sub"
+  rsync -a --delete ${keep[@]+"${keep[@]}"} "$src/" "$web/static/$sub/"
+  say "Copied to $web/static/$sub ($(du -sh "$web/static/$sub" | cut -f1))"
+  if $push; then
+    git -C "$web" add "static/$sub"
+    git -C "$web" commit -q -m "$WB_APP: Landingpage aktualisieren"
+    git -C "$web" push -q
+    say "Blog repository pushed – GitHub Pages publishes it"
+  fi
+}
+
+# ---------------------------------------------------------------------------
 # Screenshots
 
 # Finds the available simulator named $1 or creates it from device type $2
@@ -260,7 +321,7 @@ wb_sim() {
 
 wb_doctor() {
   local tool
-  for tool in git flutter dart xcrun gh hugo python3 shellcheck; do
+  for tool in git flutter dart xcrun gh hugo rsync python3 shellcheck; do
     if command -v "$tool" >/dev/null; then say "$tool: $(command -v "$tool")"; else warn "$tool missing"; fi
   done
   (wb_keytool >/dev/null) && say "keytool: $(wb_keytool)" || true
