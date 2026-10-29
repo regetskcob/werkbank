@@ -12,7 +12,7 @@
 #WB_MEDIA_EXTRA='box/case/'
 
 # Paths for dart format, extra arguments for flutter analyze and flutter test.
-#WB_FORMAT_PATHS='lib test'
+#WB_FORMAT_PATHS='lib test'   # default: lib test integration_test test_driver, as far as present
 #WB_ANALYZE_ARGS=''
 #WB_TEST_ARGS='--exclude-tags golden'
 

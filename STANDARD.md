@@ -24,7 +24,8 @@ lehnt unbekannte Einträge auf oberster Ebene und Medien außerhalb ihrer Ordner
 | `build/` | Alles Erzeugte, ignoriert. `flutter clean` löscht es – was bleiben soll, gehört nicht hierhin |
 
 Wurzeldateien: `README.md`, `CLAUDE.md`, `LICENSE`, `CHANGELOG.md` (ggf. `CHANGELOG.de.md`),
-`pubspec.*`, `analysis_options.yaml`, `l10n.yaml`, `dart_test.yaml`, `build.yaml`.
+`pubspec.*`, `analysis_options.yaml`, `l10n.yaml`, `dart_test.yaml`, `build.yaml`, `.mcp.json`,
+`Gemfile*` (fastlane) und `package*.json` (Supabase-CLI und andere Node-Werkzeuge).
 Weitere Wurzelordner nur für eigenständige Produkte neben der App (z. B. `ha-addon/`,
 `box/` bei KNX Monitor), eingetragen in `WB_TOP_EXTRA`.
 
@@ -32,9 +33,11 @@ Weitere Wurzelordner nur für eigenständige Produkte neben der App (z. B. `ha-a
 
 ```
 store/
-  ios/metadata/<de-DE|en-US>/      Texte im fastlane-deliver-Format (name.txt, description.txt, …)
+  ios/metadata/                    der fastlane-deliver-Baum: <de-DE|en-US>/ mit den Texten,
+                                   dazu review_information/, copyright.txt, Kategorien
   ios/screenshots/<de-DE|en-US>/   fertige Screenshots, Präfix nach Gerät: iphone69_01_<name>.png, ipad13_…
-  ios/review/                      Hinweise und Bilder für die App-Prüfung
+  ios/review/                      weitere Hinweise und Bilder für die App-Prüfung (was deliver
+                                   nicht hochlädt)
   android/metadata/<de-DE|en-US>/  Texte und images/ im fastlane-supply-Format
                                    (images/phoneScreenshots/, sevenInchScreenshots/, tenInchScreenshots/,
                                    featureGraphic.png, icon.png)
@@ -60,7 +63,7 @@ Watch-App, Seiten-Deploy), steht als eigener Befehl daneben.
 | Befehl | Was | Quelle |
 |---|---|---|
 | `verify` | vor jedem Push: Layout, Übersetzungen, Format, Analyse, Tests, dann die Hooks `verify_quick_extra` und `verify_extra` | `werkbank verify` |
-| `android` | signiertes AAB nach `build/release/<app>-<version>.aab`, Prüfung gegen den Debug-Schlüssel, Symbole wegsichern | `werkbank android` |
+| `android` | signiertes AAB (baut fastlane, nimmt `werkbank collect aab` es auf) nach `build/release/<app>-<version>.aab`, Prüfung gegen den Debug-Schlüssel, Symbole wegsichern | `werkbank android` |
 | `ios` | IPA nach `build/release/<app>-<version>.ipa`, mit `--upload` zu App Store Connect | `werkbank ios` |
 | `shots` | Rohaufnahmen nach `store/raw/` | Projekt (Simulator über `werkbank sim`) |
 | `graphics` | aus `store/raw/` die fertigen Bilder in `store/<plattform>/…` | Projekt |
@@ -109,7 +112,7 @@ optional; Vorlage: `werkbank.conf.example` im werkbank-Repo.
 | `WB_APP` | `name` aus `pubspec.yaml` | Dateinamen der Release-Dateien, Symbolordner |
 | `WB_TOP_EXTRA` | – | weitere Wurzeleinträge (Regex-Alternativen) |
 | `WB_MEDIA_EXTRA` | – | weitere Medienordner (Regex, mit `/` am Ende) |
-| `WB_FORMAT_PATHS` | `lib test` | Pfade für `dart format` |
+| `WB_FORMAT_PATHS` | vorhandene von `lib test integration_test test_driver` | Pfade für `dart format` |
 | `WB_ANALYZE_ARGS`, `WB_TEST_ARGS` | – | zusätzliche Argumente |
 | `WB_SYMBOLS_DIR` | `~/keys/symbols/<app>` | Ziel für Debug-Symbole |
 | `WB_SITE_DIRS` | `site`, wenn `site/hugo.toml` da ist | Hugo-Seiten, die `verify` baut |

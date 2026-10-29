@@ -10,7 +10,7 @@ ok() { printf 'ok   %s\n' "$1"; }
 bad() { printf 'FAIL %s\n' "$1"; fails=$((fails + 1)); }
 # check <name> <command…>: passes if the command succeeds.
 check() { if (cd "$repo" && eval "${*:2}") >/dev/null 2>&1; then ok "$1"; else bad "$1"; fi; }
-expect_ok() { if (cd "$repo" && "$wb" "${@:2}" >/dev/null 2>&1); then ok "$1"; else bad "$1"; fi; }
+expect_ok() { if (cd "$repo" && "$wb" "${@:2}" >/dev/null 2>"$tmp/err"); then ok "$1"; else bad "$1"; cat "$tmp/err"; fi; }
 expect_fail() { if (cd "$repo" && "$wb" "${@:2}" >/dev/null 2>&1); then bad "$1"; else ok "$1"; fi; }
 add() { mkdir -p "$repo/$(dirname "$1")" && echo x >"$repo/$1" && git -C "$repo" add "$1"; }
 
@@ -32,18 +32,26 @@ check "version name" '[ "$("$wb" version name)" = "1.2.3" ]'
 check "version build" '[ "$("$wb" version build)" = "45" ]'
 check "runs from a subfolder" 'cd lib && "$wb" layout'
 
+echo x >"$repo/untracked.txt"
+expect_fail "layout: new file not yet added" layout
+rm "$repo/untracked.txt"
+printf 'ignored/\n' >"$repo/.gitignore"
+mkdir -p "$repo/ignored" && echo x >"$repo/ignored/a.png"
+git -C "$repo" add .gitignore
+expect_ok "layout: ignored files do not count" layout
+
 add notes.txt
 expect_fail "layout: unknown top-level file" layout
-git -C "$repo" rm -q --cached notes.txt
+git -C "$repo" rm -q -f notes.txt
 
 add docs/shot.png
 expect_fail "layout: image loose in docs/" layout
-git -C "$repo" rm -q --cached docs/shot.png
+git -C "$repo" rm -q -f docs/shot.png
 
 add notes.txt
 add docs/shot.png
-check "layout: reports top-level and media problems together" '! "$wb" layout 2>err; grep -q notes.txt err && grep -q docs/shot.png err'
-git -C "$repo" rm -q --cached notes.txt docs/shot.png
+check "layout: reports top-level and media problems together" '! "$wb" layout 2>"$tmp/err"; grep -q notes.txt "$tmp/err" && grep -q docs/shot.png "$tmp/err"'
+git -C "$repo" rm -q -f notes.txt docs/shot.png
 
 add tool/case.stl
 expect_fail "layout: model in tool/" layout
@@ -71,6 +79,10 @@ echo kept >"$web/static/demo/keep/x.html"
 check "site blog copies, deletes stale files, keeps --keep" \
   '. "$(dirname "$wb")/../lib/common.sh"; wb_load_conf; WEBSITE_REPO="$web" wb_site_blog "$tmp/built" demo --keep /keep/ &&
    [ -f "$web/static/demo/a/index.html" ] && [ ! -e "$web/static/demo/stale.html" ] && [ -f "$web/static/demo/keep/x.html" ]'
+
+expect_fail "collect: missing file" collect ipa nothing.ipa
+echo ipa >"$tmp/x.ipa"
+check "collect ipa copies to build/release" '"$wb" collect ipa "$tmp/x.ipa" && [ -f build/release/demo-1.2.3+45.ipa ]'
 
 expect_fail "android without key.properties" android
 expect_fail "unknown command" frobnicate

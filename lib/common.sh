@@ -21,7 +21,7 @@ wb_load_conf() {
   WB_APP=""
   WB_TOP_EXTRA=""
   WB_MEDIA_EXTRA=""
-  WB_FORMAT_PATHS="lib test"
+  WB_FORMAT_PATHS=""
   WB_TEST_ARGS=""
   WB_ANALYZE_ARGS=""
   WB_SYMBOLS_DIR=""
@@ -34,6 +34,12 @@ wb_load_conf() {
   [ -n "$WB_APP" ] || WB_APP=$(basename "$PWD")
   [ -n "$WB_SYMBOLS_DIR" ] || WB_SYMBOLS_DIR="$HOME/keys/symbols/$WB_APP"
   if [ -z "$WB_SITE_DIRS" ] && [ -f site/hugo.toml ]; then WB_SITE_DIRS=site; fi
+  if [ -z "$WB_FORMAT_PATHS" ]; then
+    local dir
+    for dir in lib test integration_test test_driver; do
+      if [ -d "$dir" ]; then WB_FORMAT_PATHS="${WB_FORMAT_PATHS:+$WB_FORMAT_PATHS }$dir"; fi
+    done
+  fi
 }
 
 # Whether the project defined the hook function $1 in its conf.
@@ -51,7 +57,7 @@ wb_env_file() {
 # Folder structure
 
 # Top-level entries every app repository may have (STANDARD.md, "Ordnerstruktur").
-WB_TOP_BASE='\.claude|\.github|\.gitignore|\.gitattributes|\.metadata|\.vscode|CLAUDE\.md|README\.md|LICENSE|CHANGELOG(\.[a-z]{2})?\.md|analysis_options\.yaml|dart_test\.yaml|build\.yaml|l10n\.yaml|pubspec\.(yaml|lock)|android|ios|macos|linux|windows|web|lib|test|integration_test|test_driver|assets|docs|tool|store|site|supabase'
+WB_TOP_BASE='\.claude|\.github|\.gitignore|\.gitattributes|\.metadata|\.vscode|\.mcp\.json|CLAUDE\.md|README\.md|LICENSE|CHANGELOG(\.[a-z]{2})?\.md|analysis_options\.yaml|dart_test\.yaml|build\.yaml|l10n\.yaml|pubspec\.(yaml|lock)|Gemfile(\.lock)?|package(-lock)?\.json|android|ios|macos|linux|windows|web|lib|test|integration_test|test_driver|assets|docs|tool|store|site|supabase'
 # Where images, PDFs, videos, models, archives and app binaries may live.
 WB_MEDIA_BASE='(android|ios|macos|linux|windows|web|assets|store)/|site/(static|assets)/|docs/(images|pdf)/|(test|integration_test)/(.*/)?goldens/'
 WB_MEDIA_EXT='png|jpe?g|gif|webp|heic|psd|pdf|mp4|mov|stl|step|3mf|zip|xz|aab|apk|ipa'
@@ -59,9 +65,12 @@ WB_MEDIA_EXT='png|jpe?g|gif|webp|heic|psd|pdf|mp4|mov|stl|step|3mf|zip|xz|aab|ap
 wb_layout() {
   local top_re="^(${WB_TOP_BASE}${WB_TOP_EXTRA:+|$WB_TOP_EXTRA})$"
   local media_re="^(${WB_MEDIA_BASE}${WB_MEDIA_EXTRA:+|$WB_MEDIA_EXTRA})"
-  local top media
-  top=$(git ls-files | cut -d/ -f1 | sort -u | grep -vE "$top_re" || true)
-  media=$(git ls-files | grep -iE "\\.(${WB_MEDIA_EXT})\$" | grep -vE "$media_re" || true)
+  local files top media
+  # Tracked files plus new ones not yet added (but not ignored ones), so a
+  # local verify catches a misplaced file before the commit.
+  files=$(git ls-files; git ls-files --others --exclude-standard)
+  top=$(cut -d/ -f1 <<<"$files" | sort -u | grep -vE "$top_re" || true)
+  media=$(grep -iE "\\.(${WB_MEDIA_EXT})\$" <<<"$files" | grep -vE "$media_re" || true)
   # Both lists at once, so one run shows everything to move.
   [ -z "$top" ] || printf '\033[1;31merror:\033[0m unknown top-level entries (STANDARD.md, Ordnerstruktur): %s\n' "$(tr '\n' ' ' <<<"$top")" >&2
   [ -z "$media" ] || printf '\033[1;31merror:\033[0m media outside their folders (STANDARD.md, Ordnerstruktur): %s\n' "$(tr '\n' ' ' <<<"$media")" >&2
@@ -228,6 +237,22 @@ wb_ios() {
   else
     say "Not uploaded – werkbank ios --upload, Transporter, or Xcode (build/ios/archive/Runner.xcarchive → Distribute App)"
   fi
+}
+
+# Takes a bundle built elsewhere (e.g. by fastlane) into build/release/: an
+# AAB/APK is checked against the debug key first. $1: aab, apk or ipa, $2: path.
+wb_collect() {
+  local ext=${1:?aab, apk or ipa} src=${2:?path to the file} out
+  [ -f "$src" ] || die "$src missing"
+  case "$ext" in
+    aab | apk) wb_check_signature "$src" ;;
+    ipa) ;;
+    *) die "werkbank collect aab|apk|ipa <path>" ;;
+  esac
+  out=$(wb_release_path "$ext")
+  mkdir -p build/release
+  cp "$src" "$out"
+  say "Release file: $out"
 }
 
 # Path of the App Store Connect API key; fails with what is missing.

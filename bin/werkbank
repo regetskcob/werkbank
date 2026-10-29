@@ -14,6 +14,9 @@
 #   werkbank site <folder> <base URL> [blog <subfolder> [--push]]
 #                                      build a Hugo site into build/site/<folder>/,
 #                                      optionally copy it into the blog repository
+#   werkbank collect aab|apk|ipa <path>
+#                                      take a bundle built elsewhere (fastlane) into
+#                                      build/release/, AAB/APK checked like above
 #   werkbank symbols <platform>        keep build/symbols/<platform> outside the repo
 #   werkbank sim <name> <device type> <runtime>
 #                                      find or create the simulator, boot it, print
@@ -42,6 +45,7 @@ case "$cmd" in
   version) wb_version "${1:-}" ;;
   android) wb_android "$@" ;;
   ios) wb_ios "$@" ;;
+  collect) wb_collect "$@" ;;
   symbols) wb_symbols "${1:?platform}" ;;
   site)
     out=$(wb_site_build "${1:?site folder}" "${2:?base URL}")
@@ -50,5 +54,5 @@ case "$cmd" in
     ;;
   sim) wb_sim "$@" ;;
   doctor) wb_doctor ;;
-  *) sed -n '2,27p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 2 ;;
+  *) sed -n '2,30p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac
