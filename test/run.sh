@@ -79,6 +79,10 @@ echo kept >"$web/static/demo/keep/x.html"
 check "site blog copies, deletes stale files, keeps --keep" \
   '. "$(dirname "$wb")/../lib/common.sh"; wb_load_conf; WEBSITE_REPO="$web" wb_site_blog "$tmp/built" demo --keep /keep/ &&
    [ -f "$web/static/demo/a/index.html" ] && [ ! -e "$web/static/demo/stale.html" ] && [ -f "$web/static/demo/keep/x.html" ]'
+git -C "$web" add -A
+git -C "$web" -c user.name=test -c user.email=test@example.com commit -q -m site
+check "site blog --push with nothing changed succeeds" \
+  '. "$(dirname "$wb")/../lib/common.sh"; wb_load_conf; WEBSITE_REPO="$web" wb_site_blog "$tmp/built" demo --keep /keep/ --push'
 
 expect_fail "collect: missing file" collect ipa nothing.ipa
 echo ipa >"$tmp/x.ipa"
