@@ -82,7 +82,7 @@ check "site blog copies, deletes stale files, keeps --keep" \
 git -C "$web" add -A
 git -C "$web" -c user.name=test -c user.email=test@example.com commit -q -m site
 check "site blog --push with nothing changed succeeds" \
-  '. "$(dirname "$wb")/../lib/common.sh"; wb_load_conf; WEBSITE_REPO="$web" wb_site_blog "$tmp/built" demo --keep /keep/ --push'
+  '. "$(dirname "$wb")/../lib/common.sh"; wb_load_conf; WEBSITE_REPO="$web" wb_site_blog "$tmp/built" demo --keep /keep/ --push | grep -q "nothing to push"'
 
 expect_fail "collect: missing file" collect ipa nothing.ipa
 echo ipa >"$tmp/x.ipa"
