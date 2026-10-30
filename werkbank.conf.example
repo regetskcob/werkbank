@@ -1,0 +1,39 @@
+# shellcheck shell=bash disable=SC2034
+# Settings for tool/werkbank (bash, sourced). Everything is optional.
+# See STANDARD.md in tool/werkbank/, "werkbank.conf".
+
+# Name used for release files (build/release/<app>-<version>.aab) and the
+# symbols folder; default: name in pubspec.yaml.
+#WB_APP=my-app
+
+# Additional top-level entries and media folders (extended regular
+# expressions, joined with |), for what only this project has.
+#WB_TOP_EXTRA='ha-addon|box'
+#WB_MEDIA_EXTRA='box/case/'
+
+# Paths for dart format, extra arguments for flutter analyze and flutter test.
+#WB_FORMAT_PATHS='lib test'   # default: lib test integration_test test_driver, as far as present
+#WB_ANALYZE_ARGS=''
+#WB_TEST_ARGS='--exclude-tags golden'
+
+# Hugo sites checked by werkbank verify (default: site if site/hugo.toml exists).
+#WB_SITE_DIRS='site teaser'
+
+# Where debug symbols of release builds are kept (default ~/keys/symbols/<app>).
+#WB_SYMBOLS_DIR=~/keys/symbols/my-app
+
+# Extra arguments for the release builds (printed, split at spaces).
+#android_args() { echo --obfuscate --split-debug-info=build/symbols/android; }
+#ios_args() { echo --obfuscate --split-debug-info=build/symbols/ios; }
+
+# Further checks after the tests that the CI runs too (also with --quick).
+#verify_quick_extra() {
+#  say "Parser tests"
+#  node --test supabase/tests/
+#}
+
+# Further slow checks after the tests (not with --quick).
+#verify_extra() {
+#  say "Web build"
+#  flutter build web --release --no-pub >/dev/null
+#}
