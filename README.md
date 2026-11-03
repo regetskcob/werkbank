@@ -35,3 +35,8 @@ shellcheck -x bin/werkbank lib/common.sh install.sh test/run.sh werkbank.conf.ex
 
 Neue Fassung: Tag `vX.Y.Z` setzen, `install.sh` je Projekt laufen lassen, je Projekt ein PR.
 Schritte, die nur ein Projekt braucht, bleiben im Projekt.
+
+## Lizenz
+
+[MIT](LICENSE). Die Kopie unter `tool/werkbank/` nimmt die Lizenz mit, damit
+sie auch in Projekten mit anderer Lizenz (etwa GPLv3) eindeutig bleibt.
