@@ -68,7 +68,7 @@ wb_env_file() {
 # Folder structure
 
 # Top-level entries every app repository may have (STANDARD.md, "Ordnerstruktur").
-WB_TOP_BASE='\.claude|\.github|\.gitignore|\.gitattributes|\.metadata|\.vscode|\.mcp\.json|CLAUDE\.md|README\.md|LICENSE|CHANGELOG(\.[a-z]{2})?\.md|analysis_options\.yaml|dart_test\.yaml|build\.yaml|l10n\.yaml|pubspec\.(yaml|lock)|Gemfile(\.lock)?|package(-lock)?\.json|android|ios|macos|linux|windows|tvos|watchos|web|lib|test|integration_test|test_driver|assets|docs|tool|store|site|supabase'
+WB_TOP_BASE='\.claude|\.github|\.gitignore|\.gitattributes|\.metadata|\.vscode|\.mcp\.json|CLAUDE\.md|README\.md|LICENSE|CONTRIBUTING\.md|SECURITY\.md|TRADEMARKS\.md|CHANGELOG(\.[a-z]{2})?\.md|analysis_options\.yaml|dart_test\.yaml|build\.yaml|l10n\.yaml|pubspec\.(yaml|lock)|Gemfile(\.lock)?|package(-lock)?\.json|android|ios|macos|linux|windows|tvos|watchos|web|lib|test|integration_test|test_driver|assets|docs|tool|store|site|supabase'
 # Where images, PDFs, videos, models, archives and app binaries may live.
 WB_MEDIA_BASE='(android|ios|macos|linux|windows|tvos|watchos|web|assets|store)/|site/(static|assets)/|docs/(images|pdf)/|(test|integration_test)/(.*/)?goldens/'
 WB_MEDIA_EXT='png|jpe?g|gif|webp|heic|psd|pdf|mp4|mov|stl|step|3mf|zip|xz|aab|apk|ipa'

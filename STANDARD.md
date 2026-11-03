@@ -23,7 +23,8 @@ lehnt unbekannte Einträge auf oberster Ebene und Medien außerhalb ihrer Ordner
 | `supabase/` | Backend (Migrationen, Funktionen, Vorlagen) |
 | `build/` | Alles Erzeugte, ignoriert. `flutter clean` löscht es – was bleiben soll, gehört nicht hierhin |
 
-Wurzeldateien: `README.md`, `CLAUDE.md`, `LICENSE`, `CHANGELOG.md` (ggf. `CHANGELOG.de.md`),
+Wurzeldateien: `README.md`, `CLAUDE.md`, `LICENSE`, bei offenen Projekten `CONTRIBUTING.md`,
+`SECURITY.md` und `TRADEMARKS.md`, `CHANGELOG.md` (ggf. `CHANGELOG.de.md`),
 `pubspec.*`, `analysis_options.yaml`, `l10n.yaml`, `dart_test.yaml`, `build.yaml`, `.mcp.json`,
 `Gemfile*` (fastlane) und `package*.json` (Supabase-CLI und andere Node-Werkzeuge).
 Weitere Wurzelordner nur für eigenständige Produkte neben der App (z. B. `ha-addon/`,
