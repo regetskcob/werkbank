@@ -659,7 +659,7 @@ wb_release() {
       local notes files=()
       notes=$(wb_changelog_section "${v%%+*}")
       [ -n "$notes" ] || notes=$(wb_changelog_section "$v")
-      while IFS= read -r f; do files+=("$f"); done < <(find build/release -maxdepth 1 -type f -name "*$v*" ! -name 'report-*' | sort)
+      while IFS= read -r f; do files+=("$f"); done < <(find build/release -maxdepth 1 -type f -name "*${v%%+*}*" ! -name 'report-*' | sort)
       gh release create "$tag" --repo "$WB_GH_RELEASE_REPO" --title "$WB_APP $p $v" --notes "${notes:-$p $v}" \
         ${files[@]+"${files[@]}"}
       done_lines+=("  GitHub release in $WB_GH_RELEASE_REPO (${#files[@]} files)")
