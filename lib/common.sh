@@ -521,15 +521,18 @@ wb_devicetest() {
   fi
   [ ${#targets[@]} -gt 0 ] || die "no integration tests (integration_test/*_test.dart)"
   local devices
+  # Only platforms the project has (ios/, android/, macos/), never the web.
+  local platforms="" p
+  for p in ios android macos; do [ -d "$p" ] && platforms="$platforms $p"; done
   devices=$(flutter devices --machine 2>/dev/null | python3 -c '
 import json, sys
-only = sys.argv[1]
+only, platforms = sys.argv[1], sys.argv[2].split()
 for d in json.load(sys.stdin):
-    platform = d.get("targetPlatform", "")
-    kind = "web" if platform.startswith("web") else platform.split("-")[0]
-    if kind in ("ios", "android", "darwin") and (not only or d["id"] == only):
-        print("\t".join([d["id"], "macos" if kind == "darwin" else kind, d["name"].replace("\t", " ")]))
-' "$only")
+    kind = d.get("targetPlatform", "").split("-")[0]
+    kind = "macos" if kind == "darwin" else kind
+    if kind in platforms and (not only or d["id"] == only):
+        print("\t".join([d["id"], kind, d["name"].replace("\t", " ")]))
+' "$only" "$platforms")
   [ -n "$devices" ] || die "no device${only:+ $only} connected (flutter devices)"
   local out stamp
   stamp=$(date +%Y%m%d-%H%M%S)

@@ -138,6 +138,7 @@ case "$*" in *--target=integration_test/b_test.dart*"-d phone1"*) exit 1 ;; esac
 exit 0
 FAKE
 chmod +x "$tmp/bin/flutter"
+mkdir -p "$repo/ios" "$repo/macos"
 add integration_test/a_test.dart
 add integration_test/b_test.dart
 check "devicetest: every device but the web, every test, report with the failure" \
@@ -145,6 +146,9 @@ check "devicetest: every device but the web, every test, report with the failure
    [ "$(grep -c "flutter drive --keep-app-running" "$FAKE_LOG")" = 4 ] && ! grep -q chrome "$FAKE_LOG" &&
    grep -q "| BoPhone | integration_test/b_test.dart | FAILED |" build/devicetest/*/report.md &&
    grep -q "| macOS | integration_test/a_test.dart | ok |" build/devicetest/*/report.md'
+check "devicetest leaves out platforms the project does not have" \
+  'rmdir ios; rm -rf build/devicetest; export FAKE_LOG="$tmp/flutter3.log"; PATH="$tmp/bin:$PATH" "$wb" devicetest >/dev/null 2>&1;
+   ! grep -q phone1 "$FAKE_LOG" && grep -q "\-d macos" "$FAKE_LOG"; s=$?; mkdir ios; exit $s'
 check "devicetest --device runs one device only" \
   'rm -rf build/devicetest; export FAKE_LOG="$tmp/flutter2.log"; PATH="$tmp/bin:$PATH" "$wb" devicetest --device macos integration_test/a_test.dart >/dev/null 2>&1;
    [ "$(grep -c . "$FAKE_LOG")" = 1 ] && grep -q "\-d macos" "$FAKE_LOG"'
