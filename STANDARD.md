@@ -86,6 +86,8 @@ Watch-App, Seiten-Deploy), steht als eigener Befehl daneben.
   beginnt mit einem Job `gate`, der diesen Status für den Kopf des PRs abfragt; ist er da,
   überspringen die teuren Jobs (`needs: gate`, `if: needs.gate.outputs.verified != 'true'`).
   Ohne Stempel (geändert nach `verify`, gewöhnliches `git push`, `--quick`) läuft alles.
+  Prüft die PR-CI eines Projekts nur `verify --quick`, stempelt mit `WB_CI_VERIFY=quick`
+  auch der schnelle Lauf.
   Tags und `workflow_dispatch` prüfen immer voll. Vorlage für den Job:
 
   ```yaml
@@ -284,6 +286,7 @@ optional; Vorlage: `werkbank.conf.example` im werkbank-Repo.
 | `WB_PRODUCTS`, `WB_VERSION_FILE_<p>`, `WB_TAG_PREFIX_<p>`, `WB_PLATFORMS_<p>` | `app`, `pubspec.yaml`, `<p>-v`, Plattformordner | Produkte des Release |
 | `WB_CHANGELOG`, `WB_CHANGELOG_LANGS`, `WB_GH_RELEASE_REPO` | `CHANGELOG.md`, `en de`, – | Changelog (weitere Sprachen als `CHANGELOG.<lang>.md`) und Repo der GitHub-Releases |
 | `WB_SITES`, `WB_RELEASE_SITES` | – | Seiten und welche der Release live stellt |
+| `WB_CI_VERIFY` | `full` | was die PR-CI prüft (`quick`: dann stempelt auch `verify --quick`) |
 | `release_<p>`, `build_<plattform>`, `verify_release`, `release_manual`, `site_post_<name>`, `site_deploy_<name>` | – | Hooks des Release und der Seiten |
 | `WB_DEVICETEST_TARGETS` | alle `integration_test/*_test.dart` | Tests für `devicetest` |
 | `devicetest_before`, `devicetest_after` | – | Funktionen je Gerät (`$1` Geräte-ID, `$2` Plattform) |

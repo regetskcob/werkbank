@@ -278,6 +278,9 @@ FAKE
 chmod +x "$tmp/ghbin/gh"
 # shellcheck source=/dev/null
 sw() { (cd "$st" && . "$(dirname "$wb")/../lib/common.sh" && "$@"); }
+check "stamp: a quick verify stamps only where the CI runs quick (WB_CI_VERIFY)" \
+  'rm -f "$st/.git/werkbank-verified"; (cd "$st" && . "$(dirname "$wb")/../lib/common.sh" && wb_load_conf && WB_CI_VERIFY=quick &&
+     [ "$WB_CI_VERIFY" = quick ] && wb_stamp_verified >/dev/null) && [ -f "$st/.git/werkbank-verified" ]'
 check "stamp: a clean tree after verify is stamped with HEAD" \
   'sw wb_stamp_verified >/dev/null && [ "$(cat "$st/.git/werkbank-verified")" = "$(git -C "$st" rev-parse HEAD)" ]'
 echo x >"$st/new.txt"

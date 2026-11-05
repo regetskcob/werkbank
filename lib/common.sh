@@ -53,6 +53,7 @@ wb_load_conf() {
   WB_GH_RELEASE_REPO=""
   WB_SITES=""
   WB_RELEASE_SITES=""
+  WB_CI_VERIFY="full"
   if [ -f tool/werkbank.conf ]; then
     # shellcheck disable=SC1091
     . tool/werkbank.conf
@@ -142,6 +143,8 @@ wb_verify() {
   fi
   if $quick; then
     say "Quick check green"
+    # Where the pull request CI runs only the quick checks, they are enough for the stamp.
+    if [ "$WB_CI_VERIFY" = quick ]; then wb_stamp_verified; fi
     return 0
   fi
   if wb_has_hook verify_extra; then
