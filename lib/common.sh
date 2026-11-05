@@ -504,7 +504,8 @@ wb_sim() {
 # the Mac; not the web – one device after the other, and writes a report to
 # build/devicetest/<time>/report.md with a log per run. --device <id> limits
 # it to one device. The project's hooks devicetest_before/devicetest_after
-# get the device id and platform (back up app data, quit the app); without
+# get the device id and platform (back up app data, quit the app); a failing
+# devicetest_before skips the device. Without
 # devicetest_after a Mac run quits the app it started, so instances do not
 # pile up in the Dock.
 wb_devicetest() {
@@ -555,7 +556,13 @@ for d in json.load(sys.stdin):
   local id platform name target log start secs result failed=0
   while IFS=$'\t' read -r id platform name; do
     say "$name ($platform)"
-    if wb_has_hook devicetest_before; then devicetest_before "$id" "$platform"; fi
+    # A failed hook (no backup of the app data, say) skips the device: no test without a way back.
+    if wb_has_hook devicetest_before && ! devicetest_before "$id" "$platform"; then
+      warn "  skipped: devicetest_before failed"
+      printf '| %s | – | skipped (devicetest_before failed) | – | – |\n' "$name" >>"$out/report.md"
+      failed=1
+      continue
+    fi
     for target in "${targets[@]}"; do
       log="$out/$(echo "$name-$(basename "$target" .dart)" | tr -c 'A-Za-z0-9._-\n' '_').log"
       start=$(date +%s)

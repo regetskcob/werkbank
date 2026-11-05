@@ -113,8 +113,9 @@ angeschlossenen Geräten
 (iPhone, iPad, Android, Mac; WLAN-Geräte zählen mit), eins nach dem anderen, und schreibt
 `build/devicetest/<zeit>/report.md` mit Ergebnis, Dauer und Log je Lauf. Was ein Gerät
 vorher und nachher braucht (App-Daten sichern, App beenden), stehen als Hooks
-`devicetest_before`/`devicetest_after` in `werkbank.conf`; ohne Hook beendet ein Mac-Lauf
-die gestartete App.
+`devicetest_before`/`devicetest_after` in `werkbank.conf`. Scheitert `devicetest_before`
+(etwa weil das gesperrte iPhone keine Sicherung zulässt), läuft auf dem Gerät kein Test.
+Ohne Hook beendet ein Mac-Lauf die gestartete App.
 
 ## Landingpages
 

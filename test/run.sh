@@ -149,6 +149,11 @@ check "devicetest: every device but the web, every test, report with the failure
 check "devicetest leaves out platforms the project does not have" \
   'rmdir ios; rm -rf build/devicetest; export FAKE_LOG="$tmp/flutter3.log"; PATH="$tmp/bin:$PATH" "$wb" devicetest >/dev/null 2>&1;
    ! grep -q phone1 "$FAKE_LOG" && grep -q "\-d macos" "$FAKE_LOG"; s=$?; mkdir ios; exit $s'
+check "devicetest skips a device whose devicetest_before fails" \
+  'cp tool/werkbank.conf "$tmp/conf.bak"; printf "devicetest_before() { [ \"\$2\" != ios ]; }\n" >>tool/werkbank.conf;
+   rm -rf build/devicetest; export FAKE_LOG="$tmp/flutter4.log"; ! PATH="$tmp/bin:$PATH" "$wb" devicetest >/dev/null 2>&1;
+   s=1; ! grep -q phone1 "$FAKE_LOG" && grep -q "| BoPhone | – | skipped" build/devicetest/*/report.md && s=0;
+   cp "$tmp/conf.bak" tool/werkbank.conf; exit $s'
 check "devicetest --device runs one device only" \
   'rm -rf build/devicetest; export FAKE_LOG="$tmp/flutter2.log"; PATH="$tmp/bin:$PATH" "$wb" devicetest --device macos integration_test/a_test.dart >/dev/null 2>&1;
    [ "$(grep -c . "$FAKE_LOG")" = 1 ] && grep -q "\-d macos" "$FAKE_LOG"'
