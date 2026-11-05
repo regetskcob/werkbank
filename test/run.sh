@@ -182,6 +182,9 @@ git -C "$rel" commit -q -m init
 git -C "$rel" remote add origin "$tmp/rel-origin.git"
 git -C "$rel" push -q -u origin main
 rr() { (cd "$rel" && "$wb" "$@"); }
+check "release: a build_ios hook replaces the werkbank iOS build" \
+  '[ "$(cd "$rel" && . "$(dirname "$wb")/../lib/common.sh" && wb_load_conf && unset -f release_app && WB_PLATFORMS_app=ios &&
+     build_ios() { echo "hook upload=$1"; } && wb_ios() { echo werkbank-ios; } && wb_release_build app true)" = "hook upload=true" ]'
 if rr release --dry-run >/dev/null 2>"$tmp/err"; then bad "release: dry run refuses a version without changelog section"; else
   if grep -q 'no finished section "## 2.0.0' "$tmp/err"; then ok "release: dry run refuses a version without changelog section"; else bad "release: dry run names the missing section"; fi
 fi
