@@ -215,6 +215,7 @@ wb_android() {
     # shellcheck disable=SC2207
     args=($(android_args))
   fi
+  wb_notes_reminder
   say "App Bundle $(wb_version)"
   flutter build appbundle --release ${args[@]+"${args[@]}"} "$@"
   local aab=build/app/outputs/bundle/release/app-release.aab
@@ -241,6 +242,7 @@ wb_ios() {
     # shellcheck disable=SC2207
     args=($(ios_args))
   fi
+  wb_notes_reminder
   say "IPA $(wb_version)"
   rm -rf build/ios/ipa
   flutter build ipa --release ${args[@]+"${args[@]}"} "$@"
@@ -353,6 +355,14 @@ wb_store_notes() {
   if [ -z "${WB_NO_CLIPBOARD:-}" ] && command -v pbcopy >/dev/null; then
     pbcopy <"$play"
     say "Play notes in the clipboard"
+  fi
+}
+
+# Every store build makes sure its release texts exist: drafts for what is
+# missing, a loud warning while they are drafts. The upload refuses them then.
+wb_notes_reminder() {
+  if ! (WB_NO_CLIPBOARD=1 wb_store_notes --draft >/dev/null 2>&1); then
+    warn "release texts of build $(wb_version build) are missing or drafts – fill store/…/*$(wb_version build)*, check with: werkbank notes"
   fi
 }
 
