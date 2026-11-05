@@ -574,7 +574,7 @@ for d in json.load(sys.stdin):
       continue
     fi
     for target in "${targets[@]}"; do
-      log="$out/$(echo "$name-$(basename "$target" .dart)" | tr -c 'A-Za-z0-9._-\n' '_').log"
+      log="$out/$(echo "$name-$(basename "$target" .dart)" | tr -c 'A-Za-z0-9._\n-' '_').log"
       start=$(date +%s)
       if flutter drive --keep-app-running --driver="$driver" --target="$target" -d "$id" --no-pub >"$log" 2>&1; then
         result=ok
