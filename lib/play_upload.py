@@ -30,8 +30,9 @@ UPLOAD = "https://androidpublisher.googleapis.com/upload/androidpublisher/v3/app
 SCOPE = "https://www.googleapis.com/auth/androidpublisher"
 
 
-def parse_notes(text):
-    """Language → text from <xx-YY>…</xx-YY> blocks; fails on a block over 500 characters."""
+def parse_notes(text, langs=()):
+    """Language → text from <xx-YY>…</xx-YY> blocks; fails on a block over 500 characters
+    and when one of [langs] (the store languages) has no block."""
     notes = {}
     for lang, body in re.findall(r"<([a-z]{2}-[A-Z]{2})>\s*(.*?)\s*</\1>", text, re.S):
         if len(body) > 500:
@@ -39,6 +40,9 @@ def parse_notes(text):
         notes[lang] = body
     if not notes:
         raise SystemExit("error: no <de-DE>…</de-DE> blocks in the release notes")
+    missing = [l for l in langs if l not in notes]
+    if missing:
+        raise SystemExit(f"error: release notes miss {', '.join(missing)}")
     return notes
 
 
@@ -68,7 +72,7 @@ def token(key):
         "grant_type": "urn:ietf:params:oauth:grant-type:jwt-bearer",
         "assertion": f"{signing.decode()}.{b64(sig)}",
     }).encode()
-    with urllib.request.urlopen(urllib.request.Request(key["token_uri"], data=body)) as r:
+    with urllib.request.urlopen(urllib.request.Request(key["token_uri"], data=body), timeout=60) as r:
         return json.load(r)["access_token"]
 
 
@@ -95,11 +99,12 @@ def main():
     p.add_argument("--track", default="internal")
     p.add_argument("--status", default="completed", choices=["completed", "draft"])
     p.add_argument("--notes")
+    p.add_argument("--langs", default="", help="store languages that must have notes, space separated")
     p.add_argument("--dry-run", action="store_true")
     a = p.parse_args()
     if not re.fullmatch(r"[a-zA-Z][\w.]+", a.package):
         raise SystemExit(f"error: bad package name {a.package}")
-    notes = parse_notes(open(a.notes, encoding="utf-8").read()) if a.notes else {}
+    notes = parse_notes(open(a.notes, encoding="utf-8").read(), a.langs.split()) if a.notes else {}
     if not os.path.isfile(a.aab):
         raise SystemExit(f"error: {a.aab} missing")
     plan = f"{a.aab} → {a.package}, track {a.track} ({a.status}), notes: {', '.join(notes) or 'none'}"
