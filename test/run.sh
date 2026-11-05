@@ -172,9 +172,11 @@ mkdir -p "$rel/tool"
 cat >"$rel/tool/werkbank.conf" <<'CONF'
 WB_PLATFORMS_app=''
 verify_release() { echo verified >>build/calls; }
-release_app() { mkdir -p build/release; echo "built upload=$1" >>build/calls; echo x >build/release/rel-2.0.0+7.zip; }
+release_app() { mkdir -p build/release; echo "built upload=$1" >>build/calls; echo x >build/release/rel-2.0.0+7.zip; [ -z "${FAKE_RESOLVE:-}" ] || echo resolved-anew >"$FAKE_RESOLVE"; }
 CONF
 printf 'build/\n' >"$rel/.gitignore"
+resolved=ios/Runner.xcworkspace/xcshareddata/swiftpm/Package.resolved
+mkdir -p "$rel/$(dirname "$resolved")" && echo pinned >"$rel/$resolved"
 git -C "$rel" add -A
 git -C "$rel" commit -q -m init
 git -C "$rel" remote add origin "$tmp/rel-origin.git"
@@ -193,6 +195,20 @@ check "release: dry run is ready and changes nothing" 'rr release --dry-run 2>&1
 echo dirty >"$rel/dirty.txt"
 check "release: refuses uncommitted changes" '! rr release >/dev/null 2>&1 && [ -z "$(git -C "$rel" tag)" ]'
 rm "$rel/dirty.txt"
+check "resolved: unchanged Package.resolved passes" 'rr resolved >/dev/null 2>&1'
+echo resolved-anew >"$rel/$resolved"
+check "resolved: a rewritten Package.resolved fails and is named" '! rr resolved 2>"$tmp/err" >/dev/null && grep -q "$resolved" "$tmp/err"'
+check "release: dry run names a rewritten Package.resolved" '! rr release --dry-run 2>"$tmp/err" >/dev/null && grep -q "Package.resolved changed.*$resolved" "$tmp/err" && ! grep -q "uncommitted changes" "$tmp/err"'
+git -C "$rel" checkout -q -- "$resolved"
+mkdir -p "$rel/macos/Runner.xcworkspace"
+echo new >"$rel/macos/Runner.xcworkspace/Package.resolved"
+check "resolved: a new untracked Package.resolved counts" '! rr resolved >/dev/null 2>&1'
+rm -r "$rel/macos"
+check "release: a build that rewrites Package.resolved stops before the tag" \
+  '! FAKE_RESOLVE="$resolved" rr release 2>"$tmp/err" >/dev/null && grep -q "commit them via PR" "$tmp/err" && [ -z "$(git -C "$rel" tag)" ] &&
+   ! git --git-dir="$tmp/rel-origin.git" rev-parse -q --verify refs/tags/v2.0.0+7 >/dev/null'
+git -C "$rel" checkout -q -- "$resolved"
+rm -f "$rel/build/calls"
 check "release: verify, build, tag pushed, report" 'rr release >/dev/null 2>&1 && grep -q verified "$rel/build/calls" && grep -q "built upload=false" "$rel/build/calls" &&
    git --git-dir="$tmp/rel-origin.git" rev-parse -q --verify refs/tags/v2.0.0+7 >/dev/null && grep -q "tag v2.0.0+7" "$rel"/build/release/report-*.md'
 check "release: a released version is skipped" 'rr release 2>&1 | grep "already released" >/dev/null'
