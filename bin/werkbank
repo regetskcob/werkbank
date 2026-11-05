@@ -22,6 +22,14 @@
 #                                      find or create the simulator, boot it, print
 #                                      its UDID (e.g. "Store iPhone 6.9"
 #                                      com.apple.CoreSimulator.SimDeviceType.iPhone-16-Pro-Max iOS)
+#   werkbank notes [--draft] [build]   release texts of the build complete? (TestFlight per
+#                                      language, Play block ≤ 500); --draft creates drafts
+#                                      from the merged pull requests; Play block to the clipboard
+#   werkbank upload-apple <xcarchive>  to App Store Connect with the Xcode account (no API key)
+#   werkbank upload-play [aab] [track] to a Play track with the release notes (service account)
+#   werkbank devicetest [--device <id>] [test …]
+#                                      integration tests on every connected device in turn,
+#                                      report in build/devicetest/<time>/report.md
 #   werkbank doctor                    which tools and keys are there
 #
 # Works from any directory: a copy in tool/werkbank/ always acts on its own
@@ -53,6 +61,10 @@ case "$cmd" in
     if [ "${3:-}" = blog ]; then wb_site_blog "$out" "${4:?folder below static/}" "${@:5}"; fi
     ;;
   sim) wb_sim "$@" ;;
+  notes) wb_store_notes "$@" ;;
+  upload-apple) wb_upload_apple "$@" ;;
+  upload-play) wb_upload_play "$@" ;;
+  devicetest) wb_devicetest "$@" ;;
   doctor) wb_doctor ;;
-  *) sed -n '2,30p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 2 ;;
+  *) sed -n '2,38p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac

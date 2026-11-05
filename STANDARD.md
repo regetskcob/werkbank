@@ -66,6 +66,10 @@ Watch-App, Seiten-Deploy), steht als eigener Befehl daneben.
 | `verify` | vor jedem Push: Layout, Übersetzungen, Format, Analyse, Tests, dann die Hooks `verify_quick_extra` und `verify_extra` | `werkbank verify` |
 | `android` | signiertes AAB (baut fastlane oder ein Projektskript, nimmt `werkbank collect aab <pfad> [variante]` es auf) nach `build/release/<app>-<version>.aab`, Prüfung gegen den Debug-Schlüssel, Symbole wegsichern | `werkbank android` |
 | `ios` | IPA nach `build/release/<app>-<version>.ipa`, mit `--upload` zu App Store Connect | `werkbank ios` |
+| `notes [--draft]` | Release-Texte des Builds vollständig? `--draft` legt Entwürfe aus den gemergten PRs an | `werkbank notes` |
+| `upload-apple <xcarchive>` | Archiv (iOS, macOS) zu App Store Connect, mit dem in Xcode angemeldeten Konto | `werkbank upload-apple` |
+| `upload-play [aab] [track]` | AAB mit Versionshinweisen in eine Play-Spur (Dienstkonto) | `werkbank upload-play` |
+| `devicetest` | Integrationstests nacheinander auf allen angeschlossenen Geräten, Bericht in `build/devicetest/` | `werkbank devicetest` |
 | `shots` | Rohaufnahmen nach `store/raw/` | Projekt (Simulator über `werkbank sim`) |
 | `graphics` | aus `store/raw/` die fertigen Bilder in `store/<plattform>/…` | Projekt |
 | `site` | Landingpage bauen und ausliefern | `werkbank site` (Abschnitt Landingpages) |
@@ -75,6 +79,42 @@ Watch-App, Seiten-Deploy), steht als eigener Befehl daneben.
   Builds (macOS, Windows) nur auf Tag oder von Hand. Release-Builds entstehen lokal.
 - **Ausgaben:** Erzeugtes nach `build/`, Release-Dateien nach `build/release/`, Symbole von
   `--split-debug-info` nach `~/keys/symbols/<app>/<version>/<plattform>/`.
+
+### Release-Texte
+
+Zu jedem Store-Build gehören Texte, die zum Upload fertig daliegen:
+
+```
+store/ios/testflight/whats_new_<build>_<de-DE|en-US>.txt   „Was testen“ für TestFlight, ≤ 4000 Zeichen, du-Ansprache
+store/android/play-notes-<build>.txt                      ein Block je Sprache: <de-DE>…</de-DE>, je ≤ 500 Zeichen
+```
+
+`werkbank notes --draft` legt fehlende als Entwurf aus den seit dem letzten App-Tag
+(`WB_APP_TAG_PREFIX`) gemergten PRs an, mit der Zeile `ENTWURF`. Solange sie drinsteht,
+gilt der Text als fehlend: Die PR-Titel sind englisch und technisch, die Texte schreibt
+Claude oder du in Nutzersprache. `werkbank notes` prüft und legt den Play-Block in die
+Zwischenablage; `upload-play` nimmt ihn mit.
+
+### Hochladen
+
+- **Apple:** `werkbank upload-apple <archiv>` macht, was „Distribute App“ im Organizer tut,
+  mit dem in Xcode angemeldeten Konto – kein API-Schlüssel nötig. Ein zweiter Versuch folgt
+  von selbst, falls die Verbindung abbricht.
+- **Google Play:** `werkbank upload-play` lädt mit einem Dienstkonto hoch (Play Console →
+  Nutzer und Berechtigungen → Dienstkonto einladen, Rechte „Releases verwalten“), Schlüssel
+  unter `WB_PLAY_KEY`. Spur `WB_PLAY_TRACK` (Standard `internal`), solange die App nicht
+  veröffentlicht ist `WB_PLAY_STATUS=draft`. Nur Python und openssl, kein fastlane.
+
+### Gerätetest
+
+`werkbank devicetest` startet die Integrationstests mit `flutter drive --keep-app-running`
+(ohne den Schalter deinstalliert Flutter die App am Ende – samt ihrer Daten) auf allen
+angeschlossenen Geräten
+(iPhone, iPad, Android, Mac; WLAN-Geräte zählen mit), eins nach dem anderen, und schreibt
+`build/devicetest/<zeit>/report.md` mit Ergebnis, Dauer und Log je Lauf. Was ein Gerät
+vorher und nachher braucht (App-Daten sichern, App beenden), stehen als Hooks
+`devicetest_before`/`devicetest_after` in `werkbank.conf`; ohne Hook beendet ein Mac-Lauf
+die gestartete App.
 
 ## Landingpages
 
@@ -100,7 +140,7 @@ Nie im Repo. Gleiche Namen in allen Projekten:
 |---|---|
 | Android-Upload-Schlüssel | `~/keys/<name>-upload.jks`, verwiesen aus `android/key.properties` (ignoriert) |
 | App Store Connect | `ASC_KEY_ID`, `ASC_ISSUER_ID`, Datei `ASC_KEY_PATH` (Standard `~/.appstoreconnect/private_keys/AuthKey_<id>.p8`) |
-| Google Play (Upload per fastlane) | `PLAY_JSON_KEY` (Pfad zur Dienstkonto-JSON) |
+| Google Play (Upload) | Dienstkonto-JSON unter `WB_PLAY_KEY` (Standard `~/keys/<app>-play.json`) |
 | Build-Werte der App (Supabase, RevenueCat, …) | `~/.config/<app>/<name>.env`, im Projekt mit `wb_env_file` geladen |
 
 ## werkbank.conf
@@ -119,6 +159,11 @@ optional; Vorlage: `werkbank.conf.example` im werkbank-Repo.
 | `WB_SITE_DIRS` | `site`, wenn `site/hugo.toml` da ist | Hugo-Seiten, die `verify` baut |
 | `android_args`, `ios_args` | – | Funktionen, die Build-Argumente ausgeben |
 | `verify_quick_extra` | – | Funktion mit weiteren Prüfungen, die auch die CI macht (läuft auch bei `--quick`) |
+| `WB_APP_TAG_PREFIX` | `v` | Tag-Präfix der App-Releases (Entwürfe der Release-Texte) |
+| `WB_STORE_LANGS` | `de-DE en-US` | Sprachen der Release-Texte |
+| `WB_PLAY_PACKAGE`, `WB_PLAY_KEY`, `WB_PLAY_TRACK`, `WB_PLAY_STATUS` | –, `~/keys/<app>-play.json`, `internal`, `completed` | Upload zu Google Play |
+| `WB_DEVICETEST_TARGETS` | alle `integration_test/*_test.dart` | Tests für `devicetest` |
+| `devicetest_before`, `devicetest_after` | – | Funktionen je Gerät (`$1` Geräte-ID, `$2` Plattform) |
 | `verify_extra` | – | Funktion mit langsamen Prüfungen (Web-Build, Server, Hugo; nicht bei `--quick`) |
 
 ## werkbank aktualisieren

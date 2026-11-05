@@ -5,6 +5,9 @@
 #   tool/release.sh layout             folder structure only (tool/werkbank/STANDARD.md)
 #   tool/release.sh android            signed AAB → build/release/
 #   tool/release.sh ios [--upload]     IPA → build/release/, optionally to App Store Connect
+#   tool/release.sh notes [--draft]    release texts of this build (TestFlight, Play) complete?
+#   tool/release.sh upload-apple <xcarchive> | upload-play [aab] [track]
+#   tool/release.sh devicetest         integration tests on every connected device
 set -euo pipefail
 # shellcheck source-path=SCRIPTDIR
 # shellcheck source=werkbank/lib/common.sh
@@ -17,5 +20,9 @@ case "${1:-}" in
   layout) wb_layout ;;
   android) shift; wb_android "$@" ;;
   ios) shift; wb_ios "$@" ;;
-  *) sed -n '2,7p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+  notes) shift; wb_store_notes "$@" ;;
+  upload-apple) shift; wb_upload_apple "$@" ;;
+  upload-play) shift; wb_upload_play "$@" ;;
+  devicetest) shift; wb_devicetest "$@" ;;
+  *) sed -n '2,10p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac

@@ -5,6 +5,9 @@
 # wb_version takes an optional part (name, build); calls without one are meant.
 # shellcheck disable=SC2119,SC2120
 
+# This folder: helpers next to it (play_upload.py).
+WB_LIB="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 say() { printf '\033[1;32m==>\033[0m %s\n' "$*"; }
 warn() { printf '\033[1;33mwarning:\033[0m %s\n' "$*" >&2; }
 die() { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
@@ -37,6 +40,13 @@ wb_load_conf() {
   WB_ANALYZE_ARGS=""
   WB_SYMBOLS_DIR=""
   WB_SITE_DIRS=""
+  WB_APP_TAG_PREFIX="v"
+  WB_STORE_LANGS="de-DE en-US"
+  WB_PLAY_PACKAGE=""
+  WB_PLAY_KEY=""
+  WB_PLAY_TRACK="internal"
+  WB_PLAY_STATUS="completed"
+  WB_DEVICETEST_TARGETS=""
   if [ -f tool/werkbank.conf ]; then
     # shellcheck disable=SC1091
     . tool/werkbank.conf
@@ -44,6 +54,7 @@ wb_load_conf() {
   [ -n "$WB_APP" ] || WB_APP=$(sed -n 's/^name: *//p' pubspec.yaml 2>/dev/null | head -1)
   [ -n "$WB_APP" ] || WB_APP=$(basename "$PWD")
   [ -n "$WB_SYMBOLS_DIR" ] || WB_SYMBOLS_DIR="$HOME/keys/symbols/$WB_APP"
+  [ -n "$WB_PLAY_KEY" ] || WB_PLAY_KEY="$HOME/keys/$WB_APP-play.json"
   if [ -z "$WB_SITE_DIRS" ] && [ -f site/hugo.toml ]; then WB_SITE_DIRS=site; fi
   if [ -z "$WB_FORMAT_PATHS" ]; then
     local dir
@@ -279,6 +290,131 @@ wb_asc_key() {
 }
 
 # ---------------------------------------------------------------------------
+# Store texts and uploads (STANDARD.md "Release-Texte")
+
+# Release texts of build $1 (default: the build number of pubspec.yaml):
+# TestFlight "What to test" per language and the Play release notes as one
+# block for the Play Console. Fails when one is missing, still a draft, or
+# too long. With --draft, missing files are created from the pull requests
+# merged since the last app tag, marked ENTWURF until someone writes them.
+wb_store_notes() {
+  local draft=false
+  if [ "${1:-}" = --draft ]; then draft=true; shift; fi
+  local build=${1:-$(wb_version build)} lang file play missing=0
+  [ -n "$build" ] || die "no build number in pubspec.yaml (version: 1.2.3+45)"
+  play="store/android/play-notes-$build.txt"
+  if $draft; then
+    local since changes
+    since=$(git describe --tags --abbrev=0 --match "${WB_APP_TAG_PREFIX}*" 2>/dev/null || true)
+    # A GitHub merge has the pull request title as first body line, else the subject counts.
+    changes=$(git log --first-parent --merges --format='%s%x1f%b%x1e' ${since:+"$since..HEAD"} |
+      awk 'BEGIN { RS = "\x1e"; FS = "\x1f" } { sub(/^\n+/, ""); if ($0 == "") next; split($2, body, "\n");
+        t = body[1] != "" ? body[1] : $1; print "- " t }' | head -20)
+    [ -n "$changes" ] || changes='- …'
+    for lang in $WB_STORE_LANGS; do
+      file="store/ios/testflight/whats_new_${build}_$lang.txt"
+      [ -f "$file" ] && continue
+      mkdir -p "$(dirname "$file")"
+      printf 'ENTWURF – in Nutzersprache umschreiben, dann diese Zeile löschen.\n\n%s\n' "$changes" >"$file"
+      say "Draft: $file"
+    done
+    if [ ! -f "$play" ]; then
+      mkdir -p "$(dirname "$play")"
+      for lang in $WB_STORE_LANGS; do printf '<%s>\nENTWURF\n%s\n</%s>\n' "$lang" "$changes" "$lang"; done >"$play"
+      say "Draft: $play"
+    fi
+  fi
+  for lang in $WB_STORE_LANGS; do
+    file="store/ios/testflight/whats_new_${build}_$lang.txt"
+    if [ ! -f "$file" ]; then
+      warn "missing: $file"
+      missing=1
+    elif grep -q 'ENTWURF' "$file"; then
+      warn "still a draft: $file"
+      missing=1
+    elif [ "$(wc -m <"$file")" -gt 4000 ]; then
+      warn "$file is over 4000 characters (TestFlight)"
+      missing=1
+    fi
+  done
+  if [ ! -f "$play" ]; then
+    warn "missing: $play"
+    missing=1
+  elif grep -q 'ENTWURF' "$play"; then
+    warn "still a draft: $play"
+    missing=1
+  elif ! python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import play_upload; play_upload.parse_notes(open(sys.argv[2]).read())' \
+    "$WB_LIB" "$play" >/dev/null; then
+    missing=1
+  fi
+  [ "$missing" = 0 ] || die "release texts of build $build incomplete (werkbank notes --draft creates drafts)"
+  say "Release texts of build $build complete"
+  cat "$play"
+  if [ -z "${WB_NO_CLIPBOARD:-}" ] && command -v pbcopy >/dev/null; then
+    pbcopy <"$play"
+    say "Play notes in the clipboard"
+  fi
+}
+
+# Sends an App Store archive (iOS, macOS, tvOS) to App Store Connect the way
+# the Organizer's "Distribute App" does: xcodebuild signs with the Apple
+# account signed in to Xcode, so no API key is needed. One retry: uploads
+# break off now and then ("The network connection was lost").
+wb_upload_apple() {
+  local archive=${1:?path to the .xcarchive} team work
+  [ -d "$archive" ] || die "$archive missing"
+  team=$(/usr/libexec/PlistBuddy -c 'Print :ApplicationProperties:Team' "$archive/Info.plist" 2>/dev/null || true)
+  [ -n "$team" ] || die "no team in $archive/Info.plist – archive with signing"
+  work=$(mktemp -d)
+  cat >"$work/ExportOptions.plist" <<PLIST
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>method</key><string>app-store-connect</string>
+  <key>destination</key><string>upload</string>
+  <key>teamID</key><string>$team</string>
+  <key>signingStyle</key><string>automatic</string>
+  <key>uploadSymbols</key><true/>
+  <key>manageAppVersionAndBuildNumber</key><false/>
+</dict>
+</plist>
+PLIST
+  say "Uploading $(basename "$archive") to App Store Connect (team $team)"
+  local try
+  for try in 1 2; do
+    if xcodebuild -exportArchive -archivePath "$archive" -exportOptionsPlist "$work/ExportOptions.plist" \
+      -exportPath "$work/export" -allowProvisioningUpdates; then
+      rm -rf "$work"
+      say "Uploaded – TestFlight shows it after processing; the text: store/ios/testflight/"
+      return 0
+    fi
+    [ "$try" = 1 ] && warn "upload failed, trying once more"
+  done
+  rm -rf "$work"
+  die "upload failed twice – the archive is still there for the Organizer"
+}
+
+# Sends the App Bundle $1 (default: this version's release file) to the Play
+# track $2 (default WB_PLAY_TRACK) with the release notes of this build.
+# Needs a service account with access to the app (Play Console → Users and
+# permissions), its JSON key at WB_PLAY_KEY, and WB_PLAY_PACKAGE.
+wb_upload_play() {
+  local aab=${1:-$(wb_release_path aab)} track=${2:-$WB_PLAY_TRACK}
+  [ -n "$WB_PLAY_PACKAGE" ] || die "WB_PLAY_PACKAGE missing in tool/werkbank.conf (e.g. de.example.app)"
+  [ -f "$WB_PLAY_KEY" ] || die "Play service account key $WB_PLAY_KEY missing (STANDARD.md, Schlüssel)"
+  [ -f "$aab" ] || die "$aab missing – werkbank android first"
+  wb_check_signature "$aab"
+  local notes
+  notes="store/android/play-notes-$(wb_version build).txt"
+  [ -f "$notes" ] || die "$notes missing – werkbank notes --draft"
+  grep -q ENTWURF "$notes" && die "$notes is still a draft"
+  say "Uploading $(basename "$aab") to Play ($track)"
+  python3 "$WB_LIB/play_upload.py" --key "$WB_PLAY_KEY" --package "$WB_PLAY_PACKAGE" --aab "$aab" \
+    --track "$track" --status "$WB_PLAY_STATUS" --notes "$notes" ${WB_DRY_RUN:+--dry-run}
+}
+
+# ---------------------------------------------------------------------------
 # Landing pages (Hugo with the Horizont module, STANDARD.md "Landingpages")
 
 # Builds every site of WB_SITE_DIRS into a throwaway folder (part of verify
@@ -360,6 +496,88 @@ wb_sim() {
 }
 
 # ---------------------------------------------------------------------------
+# Device tests (STANDARD.md "Gerätetest")
+
+# Runs the integration tests ($@, default WB_DEVICETEST_TARGETS or every
+# integration_test/*_test.dart) with flutter drive --keep-app-running on every
+# connected device – phones, tablets,
+# the Mac; not the web – one device after the other, and writes a report to
+# build/devicetest/<time>/report.md with a log per run. --device <id> limits
+# it to one device. The project's hooks devicetest_before/devicetest_after
+# get the device id and platform (back up app data, quit the app); without
+# devicetest_after a Mac run quits the app it started, so instances do not
+# pile up in the Dock.
+wb_devicetest() {
+  local only=""
+  if [ "${1:-}" = --device ]; then only=${2:?device id}; shift 2; fi
+  local targets=("$@")
+  if [ ${#targets[@]} -eq 0 ]; then
+    if [ -n "$WB_DEVICETEST_TARGETS" ]; then
+      # shellcheck disable=SC2206
+      targets=($WB_DEVICETEST_TARGETS)
+    else
+      while IFS= read -r t; do targets+=("$t"); done < <(find integration_test -maxdepth 1 -name '*_test.dart' 2>/dev/null | sort)
+    fi
+  fi
+  [ ${#targets[@]} -gt 0 ] || die "no integration tests (integration_test/*_test.dart)"
+  local devices
+  devices=$(flutter devices --machine 2>/dev/null | python3 -c '
+import json, sys
+only = sys.argv[1]
+for d in json.load(sys.stdin):
+    platform = d.get("targetPlatform", "")
+    kind = "web" if platform.startswith("web") else platform.split("-")[0]
+    if kind in ("ios", "android", "darwin") and (not only or d["id"] == only):
+        print("\t".join([d["id"], "macos" if kind == "darwin" else kind, d["name"].replace("\t", " ")]))
+' "$only")
+  [ -n "$devices" ] || die "no device${only:+ $only} connected (flutter devices)"
+  local out stamp
+  stamp=$(date +%Y%m%d-%H%M%S)
+  out="build/devicetest/$stamp"
+  mkdir -p "$out"
+  # flutter drive with --keep-app-running: without it the app is uninstalled at the
+  # end, and with it the data on the device (a lost iPad catalog, 15.10.2026).
+  # The project's driver if it has one, else the standard one.
+  local driver=test_driver/integration_test.dart
+  if [ ! -f "$driver" ]; then
+    driver=build/devicetest/integration_test_driver.dart
+    printf "import 'package:integration_test/integration_test_driver.dart';\n\nFuture<void> main() => integrationDriver();\n" >"$driver"
+  fi
+  {
+    echo "# Gerätetest $stamp – $WB_APP $(wb_version)"
+    echo
+    echo "| Gerät | Test | Ergebnis | Dauer | Log |"
+    echo "| --- | --- | --- | --- | --- |"
+  } >"$out/report.md"
+  local id platform name target log start secs result failed=0
+  while IFS=$'\t' read -r id platform name; do
+    say "$name ($platform)"
+    if wb_has_hook devicetest_before; then devicetest_before "$id" "$platform"; fi
+    for target in "${targets[@]}"; do
+      log="$out/$(echo "$name-$(basename "$target" .dart)" | tr -c 'A-Za-z0-9._-\n' '_').log"
+      start=$(date +%s)
+      if flutter drive --keep-app-running --driver="$driver" --target="$target" -d "$id" --no-pub >"$log" 2>&1; then
+        result=ok
+      else
+        result=FAILED
+        failed=1
+      fi
+      secs=$(($(date +%s) - start))
+      printf '| %s | %s | %s | %d:%02d | %s |\n' "$name" "$target" "$result" $((secs / 60)) $((secs % 60)) \
+        "$(basename "$log")" >>"$out/report.md"
+      if [ "$result" = ok ]; then say "  $target ok"; else warn "  $target FAILED – $log"; fi
+    done
+    if wb_has_hook devicetest_after; then
+      devicetest_after "$id" "$platform"
+    elif [ "$platform" = macos ]; then
+      pkill -f "$PWD/build/macos/Build/Products/" 2>/dev/null || true
+    fi
+  done <<<"$devices"
+  say "Report: $out/report.md"
+  [ "$failed" = 0 ] || die "device tests failed"
+}
+
+# ---------------------------------------------------------------------------
 
 wb_doctor() {
   local tool
@@ -371,6 +589,9 @@ wb_doctor() {
     say "android/key.properties present"
   else
     warn "android/key.properties missing (needed for werkbank android)"
+  fi
+  if [ -n "$WB_PLAY_PACKAGE" ]; then
+    if [ -f "$WB_PLAY_KEY" ]; then say "Play service account key present"; else warn "Play key $WB_PLAY_KEY missing (needed for werkbank upload-play)"; fi
   fi
   if (wb_asc_key >/dev/null 2>&1); then
     say "App Store Connect API key present"
