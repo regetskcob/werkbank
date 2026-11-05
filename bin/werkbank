@@ -30,6 +30,11 @@
 #   werkbank devicetest [--device <id>] [test …]
 #                                      integration tests on every connected device in turn,
 #                                      report in build/devicetest/<time>/report.md
+#   werkbank release [--dry-run] [--upload] [--only <product>]
+#                                      the release, same phases everywhere: preflight, build
+#                                      (and upload), tag, GitHub release, sites, report
+#   werkbank site-deploy <name|all> [--live]
+#                                      build a site of WB_SITES; --live deploys it to its target
 #   werkbank doctor                    which tools and keys are there
 #
 # Works from any directory: a copy in tool/werkbank/ always acts on its own
@@ -65,6 +70,8 @@ case "$cmd" in
   upload-apple) wb_upload_apple "$@" ;;
   upload-play) wb_upload_play "$@" ;;
   devicetest) wb_devicetest "$@" ;;
+  release) wb_release "$@" ;;
+  site-deploy) wb_site_deploy "$@" ;;
   doctor) wb_doctor ;;
-  *) sed -n '2,38p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 2 ;;
+  *) sed -n '2,43p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac

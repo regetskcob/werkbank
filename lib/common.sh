@@ -47,6 +47,11 @@ wb_load_conf() {
   WB_PLAY_TRACK="internal"
   WB_PLAY_STATUS="completed"
   WB_DEVICETEST_TARGETS=""
+  WB_PRODUCTS="app"
+  WB_CHANGELOG="CHANGELOG.md"
+  WB_GH_RELEASE_REPO=""
+  WB_SITES=""
+  WB_RELEASE_SITES=""
   if [ -f tool/werkbank.conf ]; then
     # shellcheck disable=SC1091
     . tool/werkbank.conf
@@ -503,6 +508,249 @@ wb_sim() {
   fi
   xcrun simctl bootstatus "$id" -b >/dev/null
   echo "$id"
+}
+
+# ---------------------------------------------------------------------------
+# Release (STANDARD.md "Release"): the same phases in every project
+
+# Version of product $1: WB_VERSION_FILE_<product> (default pubspec.yaml),
+# its first `version: x` or `"version": "x"`.
+wb_product_version() {
+  local p=${1:?product} var file v
+  var="WB_VERSION_FILE_$p"
+  file=${!var:-pubspec.yaml}
+  [ -f "$file" ] || die "version file $file of $p missing"
+  v=$(sed -nE 's/^[[:space:]]*"?version"?:[[:space:]]*"?([^",[:space:]]+)"?.*/\1/p' "$file" | head -1)
+  [ -n "$v" ] || die "no version in $file"
+  echo "$v"
+}
+
+# Tag prefix of product $1: WB_TAG_PREFIX_<product>, for the app WB_APP_TAG_PREFIX.
+wb_tag_prefix() {
+  local var="WB_TAG_PREFIX_$1"
+  if [ -n "${!var:-}" ]; then echo "${!var}"; elif [ "$1" = app ]; then echo "$WB_APP_TAG_PREFIX"; else echo "$1-v"; fi
+}
+
+# Platforms of product $1: WB_PLATFORMS_<product>, else the platform folders
+# for the app (ios, android, macos), else none.
+wb_platforms() {
+  local var="WB_PLATFORMS_$1" d out=""
+  if [ -n "${!var+x}" ]; then echo "${!var}"; return; fi
+  [ "$1" = app ] || return 0
+  for d in ios android macos; do [ -d "$d" ] && out="$out $d"; done
+  echo "${out# }"
+}
+
+# The section "## <version>" of the changelog, without its heading; empty if none.
+wb_changelog_section() {
+  [ -f "$WB_CHANGELOG" ] || return 0
+  awk -v v="$1" '
+    /^## / { if (found) exit; h = $0; sub(/^## +\[?/, "", h); split(h, w, /[] –(-]/); if (w[1] == v) { found = 1; next } }
+    found { print }' "$WB_CHANGELOG" | sed '/./,$!d' | sed -e :a -e '/^\n*$/{$d;N;ba' -e '}'
+}
+
+# Builds and uploads product $1 on its platforms – or the project's hook
+# release_<product>, which then does it all (CI-built products: tag first,
+# then wait for the workflow; or builds werkbank does not know).
+wb_release_build() {
+  local p=$1 upload=$2 platform
+  if wb_has_hook "release_$p"; then
+    "release_$p" "$upload"
+    return
+  fi
+  for platform in $(wb_platforms "$p"); do
+    case "$platform" in
+      android)
+        wb_android
+        if $upload; then wb_upload_play; fi
+        ;;
+      ios)
+        wb_ios
+        if $upload; then wb_upload_apple build/ios/archive/Runner.xcarchive; fi
+        ;;
+      *)
+        wb_has_hook "build_$platform" || die "no werkbank build for $platform – define build_$platform in tool/werkbank.conf"
+        "build_$platform" "$upload"
+        ;;
+    esac
+  done
+}
+
+# One release, the same everywhere:
+#   preflight  clean main equal to origin/main, verify, release texts and changelog there
+#   build      per product and platform (or the release_<product> hook), --upload to the stores
+#   tag        <prefix><version> per product, pushed – only after a successful build/upload
+#   github     release with the changelog section and build/release/ files (WB_GH_RELEASE_REPO)
+#   sites      WB_RELEASE_SITES deployed live
+#   report     build/release/report-<version>.md: what happened, what is left by hand
+# --dry-run shows the plan and changes nothing; --only <product> limits it;
+# products whose tag exists are skipped (already released).
+wb_release() {
+  local dry=false upload=false only="" p
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --dry-run) dry=true ;;
+      --upload) upload=true ;;
+      --only) only=${2:?product}; shift ;;
+      *) die "werkbank release [--dry-run] [--upload] [--only <product>]" ;;
+    esac
+    shift
+  done
+  local todo=() v tag
+  for p in $WB_PRODUCTS; do
+    [ -z "$only" ] || [ "$only" = "$p" ] || continue
+    v=$(wb_product_version "$p")
+    tag="$(wb_tag_prefix "$p")$v"
+    if git rev-parse -q --verify "refs/tags/$tag" >/dev/null || git ls-remote --exit-code --tags origin "refs/tags/$tag" >/dev/null 2>&1; then
+      say "$p $v: $tag exists – already released"
+      continue
+    fi
+    todo+=("$p")
+  done
+  [ ${#todo[@]} -gt 0 ] || { say "Nothing to release"; return 0; }
+
+  say "Preflight"
+  local problems=()
+  [ "$(git branch --show-current)" = main ] || problems+=("not on main")
+  [ -z "$(git status --porcelain)" ] || problems+=("uncommitted changes")
+  git fetch -q origin main 2>/dev/null || true
+  [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main 2>/dev/null)" ] || problems+=("main differs from origin/main")
+  for p in "${todo[@]}"; do
+    v=$(wb_product_version "$p")
+    if [ -f "$WB_CHANGELOG" ] && [ -z "$(wb_changelog_section "${v%%+*}")" ] && [ -z "$(wb_changelog_section "$v")" ]; then
+      problems+=("$WB_CHANGELOG has no section \"## ${v%%+*}\" for $p")
+    fi
+    case " $(wb_platforms "$p") " in
+      *" ios "* | *" android "*)
+        if ! (WB_NO_CLIPBOARD=1 wb_store_notes >/dev/null 2>&1); then problems+=("release texts of $p incomplete (werkbank notes)"); fi
+        ;;
+    esac
+  done
+  if $dry; then
+    for p in "${todo[@]}"; do
+      v=$(wb_product_version "$p")
+      say "would release $p $v: build $(wb_platforms "$p" | sed 's/^$/(release_'"$p"' hook)/')$($upload && echo ', upload'), tag $(wb_tag_prefix "$p")$v${WB_GH_RELEASE_REPO:+, GitHub release in $WB_GH_RELEASE_REPO}"
+    done
+    [ -z "$WB_RELEASE_SITES" ] || say "would deploy sites: $WB_RELEASE_SITES"
+    if [ ${#problems[@]} -gt 0 ]; then
+      printf '  ✗ %s\n' "${problems[@]}" >&2
+      die "not ready to release"
+    fi
+    say "Ready – run without --dry-run"
+    return 0
+  fi
+  if [ ${#problems[@]} -gt 0 ]; then
+    printf '  ✗ %s\n' "${problems[@]}" >&2
+    die "not ready to release (werkbank release --dry-run shows the plan)"
+  fi
+  mkdir -p build/release
+  if wb_has_hook verify_release; then verify_release; else wb_verify; fi
+
+  local report done_lines=()
+  for p in "${todo[@]}"; do
+    v=$(wb_product_version "$p")
+    tag="$(wb_tag_prefix "$p")$v"
+    say "Release $p $v"
+    wb_release_build "$p" "$upload"
+    git tag -a "$tag" -m "$WB_APP $p $v"
+    git push -q origin "$tag"
+    done_lines+=("- $p $v: tag $tag")
+    if [ -n "$WB_GH_RELEASE_REPO" ]; then
+      local notes files=()
+      notes=$(wb_changelog_section "${v%%+*}")
+      [ -n "$notes" ] || notes=$(wb_changelog_section "$v")
+      while IFS= read -r f; do files+=("$f"); done < <(find build/release -maxdepth 1 -type f -name "*$v*" ! -name 'report-*' | sort)
+      gh release create "$tag" --repo "$WB_GH_RELEASE_REPO" --title "$WB_APP $p $v" --notes "${notes:-$p $v}" \
+        ${files[@]+"${files[@]}"}
+      done_lines+=("  GitHub release in $WB_GH_RELEASE_REPO (${#files[@]} files)")
+    fi
+  done
+  local site
+  for site in $WB_RELEASE_SITES; do
+    wb_site_deploy "$site" --live
+    done_lines+=("- site $site live")
+  done
+  report="build/release/report-$(wb_product_version "${todo[0]}").md"
+  {
+    echo "# Release $WB_APP $(date +%F)"
+    echo
+    printf '%s\n' "${done_lines[@]}"
+    echo
+    echo "Left by hand:"
+    $upload || echo "- upload to the stores (werkbank release --upload, or the consoles)"
+    if wb_has_hook release_manual; then release_manual; fi
+  } >"$report"
+  say "Report: $report"
+  cat "$report"
+}
+
+# ---------------------------------------------------------------------------
+# Sites (STANDARD.md "Landingpages"): one deploy for every target
+
+# WB_SITES lists the sites as <name>=<folder>|<base URL>|<target>, targets:
+#   blog:<folder below static/>   the blog repository (WEBSITE_REPO), live = push
+#   ghpages:<owner/repo>[:<domain>] gh-pages branch of that repository
+#   workflow:<file>               a deploy workflow of this repository (gh workflow run)
+#   hook                          the project's site_deploy_<name> <built folder> <live>
+# Preview builds into build/site/<folder>/ and changes nothing elsewhere; --live
+# deploys. site_post_<name> <built folder> runs after the build (redirects, extras).
+wb_site_deploy() {
+  local name=${1:?site name or all} live=false entry found=false
+  [ "${2:-}" = --live ] && live=true
+  for entry in $WB_SITES; do
+    local key=${entry%%=*} rest=${entry#*=}
+    [ "$name" = all ] || [ "$name" = "$key" ] || continue
+    found=true
+    local folder url target out
+    IFS='|' read -r folder url target <<<"$rest"
+    [ -n "$folder" ] && [ -n "$url" ] && [ -n "$target" ] || die "WB_SITES entry $entry: <name>=<folder>|<url>|<target>"
+    say "Site $key ($folder → $target)"
+    out=$(wb_site_build "$folder" "$url")
+    if wb_has_hook "site_post_$key"; then "site_post_$key" "$out"; fi
+    if ! $live; then
+      say "Preview: $out/index.html (--live deploys to $target)"
+      continue
+    fi
+    case "$target" in
+      blog:*) wb_site_blog "$out" "${target#blog:}" --push ;;
+      ghpages:*) wb_site_ghpages "$out" "${target#ghpages:}" ;;
+      workflow:*) gh workflow run "${target#workflow:}" --ref main && say "Workflow ${target#workflow:} started" ;;
+      hook)
+        wb_has_hook "site_deploy_$key" || die "site_deploy_$key missing in tool/werkbank.conf"
+        "site_deploy_$key" "$out" true
+        ;;
+      *) die "unknown site target $target" ;;
+    esac
+  done
+  $found || die "no site $name in WB_SITES"
+}
+
+# Replaces the gh-pages branch of <owner/repo>[:<domain>] with the built
+# folder $1 (a fresh clone; CNAME for the domain, .nojekyll so .well-known stays).
+wb_site_ghpages() {
+  local src=${1:?built site} spec=${2:?owner/repo[:domain]} repo domain work
+  repo=${spec%%:*}
+  domain=""
+  [ "$spec" = "$repo" ] || domain=${spec#*:}
+  work=$(mktemp -d)
+  if git clone -q --depth 1 --branch gh-pages "${WB_GIT_BASE:-https://github.com/}$repo${WB_GIT_SUFFIX:-.git}" "$work/pages" 2>/dev/null; then :; else
+    git clone -q --depth 1 "${WB_GIT_BASE:-https://github.com/}$repo${WB_GIT_SUFFIX:-.git}" "$work/pages"
+    git -C "$work/pages" checkout -q --orphan gh-pages
+  fi
+  find "$work/pages" -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
+  cp -R "$src/." "$work/pages/"
+  [ -z "$domain" ] || echo "$domain" >"$work/pages/CNAME"
+  touch "$work/pages/.nojekyll"
+  git -C "$work/pages" add -A
+  if git -C "$work/pages" diff --cached --quiet; then
+    say "gh-pages of $repo unchanged"
+  else
+    git -C "$work/pages" -c user.name="$(git config user.name)" -c user.email="$(git config user.email)" \
+      commit -q -m "$WB_APP: $(git rev-parse --short HEAD)"
+    git -C "$work/pages" push -q origin gh-pages
+    say "gh-pages of $repo pushed"
+  fi
+  rm -rf "$work"
 }
 
 # ---------------------------------------------------------------------------

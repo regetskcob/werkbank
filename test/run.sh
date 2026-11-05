@@ -158,6 +158,61 @@ check "devicetest --device runs one device only" \
   'rm -rf build/devicetest; export FAKE_LOG="$tmp/flutter2.log"; PATH="$tmp/bin:$PATH" "$wb" devicetest --device macos integration_test/a_test.dart >/dev/null 2>&1;
    [ "$(grep -c . "$FAKE_LOG")" = 1 ] && grep -q "\-d macos" "$FAKE_LOG"'
 
+# Release: a fresh project with an origin, one product built by a hook.
+rel="$tmp/rel"
+git init -q --bare -b main "$tmp/rel-origin.git"
+git init -q -b main "$rel"
+git -C "$rel" config user.name t
+git -C "$rel" config user.email t@example.com
+printf 'name: rel\nversion: 2.0.0+7\n' >"$rel/pubspec.yaml"
+printf '# Changelog\n\n## 1.0.0\n\n- old\n' >"$rel/CHANGELOG.md"
+mkdir -p "$rel/tool"
+cat >"$rel/tool/werkbank.conf" <<'CONF'
+WB_PLATFORMS_app=''
+verify_release() { echo verified >>build/calls; }
+release_app() { mkdir -p build/release; echo "built upload=$1" >>build/calls; echo x >build/release/rel-2.0.0+7.zip; }
+CONF
+printf 'build/\n' >"$rel/.gitignore"
+git -C "$rel" add -A
+git -C "$rel" commit -q -m init
+git -C "$rel" remote add origin "$tmp/rel-origin.git"
+git -C "$rel" push -q -u origin main
+rr() { (cd "$rel" && "$wb" "$@"); }
+if rr release --dry-run >/dev/null 2>"$tmp/err"; then bad "release: dry run refuses a version without changelog section"; else
+  if grep -q 'no section "## 2.0.0"' "$tmp/err"; then ok "release: dry run refuses a version without changelog section"; else bad "release: dry run names the missing section"; fi
+fi
+printf '# Changelog\n\n## 2.0.0 – 2026-11-05\n\n- new\n\n## 1.0.0\n\n- old\n' >"$rel/CHANGELOG.md"
+git -C "$rel" commit -q -am changelog
+git -C "$rel" push -q
+check "release: changelog section without the heading" '[ "$(cd "$rel" && . "$(dirname "$wb")/../lib/common.sh" && wb_load_conf && wb_changelog_section 2.0.0)" = "- new" ]'
+check "release: dry run is ready and changes nothing" 'rr release --dry-run 2>&1 | grep "would release app 2.0.0+7" >/dev/null && [ -z "$(git -C "$rel" tag)" ] && [ ! -e "$rel/build/calls" ]'
+echo dirty >"$rel/dirty.txt"
+check "release: refuses uncommitted changes" '! rr release >/dev/null 2>&1 && [ -z "$(git -C "$rel" tag)" ]'
+rm "$rel/dirty.txt"
+check "release: verify, build, tag pushed, report" 'rr release >/dev/null 2>&1 && grep -q verified "$rel/build/calls" && grep -q "built upload=false" "$rel/build/calls" &&
+   git --git-dir="$tmp/rel-origin.git" rev-parse -q --verify refs/tags/v2.0.0+7 >/dev/null && grep -q "tag v2.0.0+7" "$rel"/build/release/report-*.md'
+check "release: a released version is skipped" 'rr release 2>&1 | grep "already released" >/dev/null'
+check "release: products and tag prefixes from the conf" \
+  'printf "WB_PRODUCTS=\"app addon\"\nWB_VERSION_FILE_addon=addon.yaml\nWB_TAG_PREFIX_app=app-v\n" >>"$rel/tool/werkbank.conf"; printf "version: \"1.4.0\"\n" >"$rel/addon.yaml";
+   out=$(cd "$rel" && . "$(dirname "$wb")/../lib/common.sh" && wb_load_conf && echo "$(wb_product_version addon) $(wb_tag_prefix addon) $(wb_tag_prefix app)"); [ "$out" = "1.4.0 addon-v app-v" ]'
+
+# Sites: preview builds only, --live deploys to gh-pages (stand-in hugo, local "GitHub").
+cat >"$tmp/bin/hugo" <<'FAKE'
+#!/usr/bin/env bash
+while [ $# -gt 0 ]; do [ "$1" = --destination ] && dest=$2; shift; done
+mkdir -p "$dest" && echo "<h1>site</h1>" >"$dest/index.html"
+FAKE
+chmod +x "$tmp/bin/hugo"
+mkdir -p "$tmp/gh/o" "$rel/site"
+git init -q --bare -b main "$tmp/gh/o/pages.git"
+echo "WB_SITES='web=site|https://example.org/|ghpages:o/pages:example.org'" >>"$rel/tool/werkbank.conf"
+check "site-deploy: preview builds, deploys nothing" 'PATH="$tmp/bin:$PATH" rr site-deploy web 2>&1 | grep Preview >/dev/null && ! git --git-dir="$tmp/gh/o/pages.git" rev-parse -q --verify gh-pages >/dev/null'
+check "site-deploy --live: gh-pages with CNAME and .nojekyll" \
+  'PATH="$tmp/bin:$PATH" WB_GIT_BASE="$tmp/gh/" rr site-deploy web --live >/dev/null 2>&1 &&
+   [ "$(git --git-dir="$tmp/gh/o/pages.git" show gh-pages:CNAME)" = example.org ] && git --git-dir="$tmp/gh/o/pages.git" show gh-pages:.nojekyll >/dev/null &&
+   git --git-dir="$tmp/gh/o/pages.git" show gh-pages:index.html | grep -q site'
+expect_fail "site-deploy: unknown site" site-deploy nope
+
 expect_fail "android without key.properties" android
 expect_fail "unknown command" frobnicate
 

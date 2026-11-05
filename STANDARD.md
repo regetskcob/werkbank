@@ -80,6 +80,31 @@ Watch-App, Seiten-Deploy), steht als eigener Befehl daneben.
 - **Ausgaben:** Erzeugtes nach `build/`, Release-Dateien nach `build/release/`, Symbole von
   `--split-debug-info` nach `~/keys/symbols/<app>/<version>/<plattform>/`.
 
+### Release
+
+Ein Release läuft in jedem Projekt gleich, nur die Plattformen unterscheiden sich:
+
+```bash
+tool/release.sh release --dry-run     # Plan und Prüfung, ändert nichts
+tool/release.sh release [--upload]    # dann wirklich
+```
+
+| Phase | Was |
+|---|---|
+| Vorprüfung | sauberer `main` gleich `origin/main`, Abschnitt `## <version>` im `CHANGELOG.md`, Release-Texte vollständig (bei iOS/Android), dann `verify` (oder Hook `verify_release`) |
+| Bauen | je Produkt und Plattform: `android` und `ios` aus der werkbank, andere über `build_<plattform>`; ein Produkt mit Hook `release_<produkt>` baut ganz selbst (z. B. per CI) |
+| Hochladen | mit `--upload`: Apple über das Xcode-Konto, Play über das Dienstkonto |
+| Tag | `<präfix><version>` je Produkt, erst nach Bauen und Hochladen, gepusht |
+| GitHub-Release | mit `WB_GH_RELEASE_REPO`: Changelog-Abschnitt als Text, Dateien aus `build/release/` |
+| Seiten | `WB_RELEASE_SITES` live (siehe Landingpages) |
+| Bericht | `build/release/report-<version>.md`: was passiert ist, was noch von Hand bleibt (Hook `release_manual`) |
+
+Produkte (`WB_PRODUCTS`, Standard `app`) haben je eine Versionsdatei (`WB_VERSION_FILE_<p>`,
+Standard `pubspec.yaml`), ein Tag-Präfix (`WB_TAG_PREFIX_<p>`, für die App `WB_APP_TAG_PREFIX`,
+sonst `<p>-v`) und Plattformen (`WB_PLATFORMS_<p>`, für die App die vorhandenen Ordner `ios`,
+`android`, `macos`). Ein Produkt, dessen Tag es schon gibt, gilt als veröffentlicht und wird
+übersprungen. Der Changelog ist die eine Quelle für GitHub-Release, Seite und Store-Texte.
+
 ### Release-Texte
 
 Zu jedem Store-Build gehören Texte, die zum Upload fertig daliegen:
@@ -120,18 +145,28 @@ Ohne Hook beendet ein Mac-Lauf die gestartete App.
 ## Landingpages
 
 Jede App hat ihre Landingpage in `site/` (Hugo, Horizont als Hugo-Modul, Hugo 0.154.5 wie
-in allen Workflows). Bauen und Prüfen ist überall gleich, nur das Ziel unterscheidet sich:
+in allen Workflows). Bauen, Vorschau und Ausliefern sind überall gleich, nur das Ziel
+unterscheidet sich. Die Seiten stehen in `WB_SITES` als `<name>=<ordner>|<baseURL>|<ziel>`:
 
-| Schritt | Wie |
+```bash
+tool/release.sh site <name|all>          # Vorschau: baut nach build/site/<ordner>/, ändert nichts
+tool/release.sh site <name|all> --live   # ausliefern
+```
+
+| Ziel | Ausliefern |
 |---|---|
-| Prüfen | `werkbank verify` baut alle `WB_SITE_DIRS` (ohne `--quick`) |
-| Bauen | `werkbank site site <baseURL>` → `build/site/site/` |
-| Ausliefern in den Blog | `werkbank site site https://www.regetskcob.de/<app>/ blog <app> [--push]` → `regetskcob.github.io/static/<app>/` |
-| Ausliefern per Workflow | GitHub Pages oder FTPS im Workflow des Projekts, mit denselben Hugo-Aufrufen |
+| `blog:<unterordner>` | in den Blog (`regetskcob.github.io/static/<unterordner>/`), Push |
+| `ghpages:<owner/repo>[:<domain>]` | gh-pages-Branch des Repos, mit `CNAME` und `.nojekyll` |
+| `workflow:<datei>` | startet den Deploy-Workflow des Repos (`gh workflow run`) |
+| `hook` | eigene Funktion `site_deploy_<name>` (z. B. FTPS über einen Branch) |
 
-Projekt-Befehl ist `tool/release.sh site [--push]`. Ziele heute: KNX Monitor und Jagdaufseher
-im Blog (KNX zusätzlich `teaser/` auf knx-monitor.de per `gh-pages`), Panzergefecht per
-GitHub-Pages-Workflow, Kalkar kompakt im eigenen Repo `landing-page` per FTPS.
+Live geht eine Seite nur über diesen Befehl oder den Release (`WB_RELEASE_SITES`), nicht
+bei jedem Push auf `main`. Nacharbeiten nach dem Bau (Weiterleitungen, Extras) stehen in
+`site_post_<name>`.
+
+Ziele der Projekte: KNX Monitor `site` → `blog:knx`, `teaser` → `ghpages:regetskcob/KNX-Monitor:knx-monitor.de`;
+Jagdaufseher `blog:jagdaufseher`; Panzergefecht `workflow:pages.yaml`; Kalkar kompakt `hook`
+(FTPS über das Repo `landing-page`). `werkbank verify` baut alle `WB_SITE_DIRS` zur Prüfung.
 
 ## Schlüssel und Geheimnisse
 
@@ -163,6 +198,10 @@ optional; Vorlage: `werkbank.conf.example` im werkbank-Repo.
 | `WB_APP_TAG_PREFIX` | `v` | Tag-Präfix der App-Releases (Entwürfe der Release-Texte) |
 | `WB_STORE_LANGS` | `de-DE en-US` | Sprachen der Release-Texte |
 | `WB_PLAY_PACKAGE`, `WB_PLAY_KEY`, `WB_PLAY_TRACK`, `WB_PLAY_STATUS` | –, `~/keys/<app>-play.json`, `internal`, `completed` | Upload zu Google Play |
+| `WB_PRODUCTS`, `WB_VERSION_FILE_<p>`, `WB_TAG_PREFIX_<p>`, `WB_PLATFORMS_<p>` | `app`, `pubspec.yaml`, `<p>-v`, Plattformordner | Produkte des Release |
+| `WB_CHANGELOG`, `WB_GH_RELEASE_REPO` | `CHANGELOG.md`, – | Changelog und Repo der GitHub-Releases |
+| `WB_SITES`, `WB_RELEASE_SITES` | – | Seiten und welche der Release live stellt |
+| `release_<p>`, `build_<plattform>`, `verify_release`, `release_manual`, `site_post_<name>`, `site_deploy_<name>` | – | Hooks des Release und der Seiten |
 | `WB_DEVICETEST_TARGETS` | alle `integration_test/*_test.dart` | Tests für `devicetest` |
 | `devicetest_before`, `devicetest_after` | – | Funktionen je Gerät (`$1` Geräte-ID, `$2` Plattform) |
 | `verify_extra` | – | Funktion mit langsamen Prüfungen (Web-Build, Server, Hugo; nicht bei `--quick`) |

@@ -52,3 +52,16 @@
 #WB_DEVICETEST_TARGETS='integration_test/session_test.dart'
 #devicetest_before() { :; }  # $1 device id, $2 ios|android|macos
 #devicetest_after() { :; }
+
+# Release (STANDARD.md "Release"): products, their version files, tag prefixes and
+# platforms; GitHub releases; sites and which of them a release deploys.
+#WB_PRODUCTS='app addon'
+#WB_VERSION_FILE_addon=addon/config.yaml
+#WB_TAG_PREFIX_addon='addon-v'
+#WB_PLATFORMS_app='ios android macos'
+#WB_GH_RELEASE_REPO='owner/repo'
+#WB_SITES='site=site|https://www.regetskcob.de/app/|blog:app teaser=teaser|https://app.de/|ghpages:owner/repo:app.de'
+#WB_RELEASE_SITES='site'
+#release_addon() { :; }      # $1 true with --upload; builds the product itself
+#build_macos() { :; }        # a platform werkbank does not build
+#release_manual() { echo "- release the Play draft in the console"; }
