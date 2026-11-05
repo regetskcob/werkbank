@@ -791,7 +791,9 @@ wb_site_deploy() {
     found=true
     local folder url target out
     IFS='|' read -r folder url target <<<"$rest"
-    [ -n "$folder" ] && [ -n "$url" ] && [ -n "$target" ] || die "WB_SITES entry $entry: <name>=<folder>|<url>|<target>"
+    if [ -z "$folder" ] || [ -z "$url" ] || [ -z "$target" ]; then
+      die "WB_SITES entry $entry: <name>=<folder>|<url>|<target>"
+    fi
     say "Site $key ($folder → $target)"
     out=$(wb_site_build "$folder" "$url")
     if wb_has_hook "site_post_$key"; then "site_post_$key" "$out"; fi
