@@ -37,3 +37,31 @@
 #  say "Web build"
 #  flutter build web --release --no-pub >/dev/null
 #}
+
+# Store texts and uploads (STANDARD.md "Release-Texte"): tag prefix of app
+# releases (drafts list what was merged since), store languages, Play.
+#WB_APP_TAG_PREFIX='app-v'
+#WB_STORE_LANGS='de-DE en-US'
+#WB_PLAY_PACKAGE='de.example.app'
+#WB_PLAY_KEY=~/keys/my-app-play.json   # default ~/keys/<app>-play.json
+#WB_PLAY_TRACK='alpha'                  # internal (default), alpha = closed test, beta, production
+#WB_PLAY_STATUS='draft'                 # completed (default); draft while the app is not published yet
+
+# Device tests: which integration tests (default all integration_test/*_test.dart),
+# and what to do around each device (back up app data, quit the app).
+#WB_DEVICETEST_TARGETS='integration_test/session_test.dart'
+#devicetest_before() { :; }  # $1 device id, $2 ios|android|macos
+#devicetest_after() { :; }
+
+# Release (STANDARD.md "Release"): products, their version files, tag prefixes and
+# platforms; GitHub releases; sites and which of them a release deploys.
+#WB_PRODUCTS='app addon'
+#WB_VERSION_FILE_addon=addon/config.yaml
+#WB_TAG_PREFIX_addon='addon-v'
+#WB_PLATFORMS_app='ios android macos'
+#WB_GH_RELEASE_REPO='owner/repo'
+#WB_SITES='site=site|https://www.regetskcob.de/app/|blog:app teaser=teaser|https://app.de/|ghpages:owner/repo:app.de'
+#WB_RELEASE_SITES='site'
+#release_addon() { :; }      # $1 true with --upload; builds the product itself
+#build_macos() { :; }        # a platform werkbank does not build
+#release_manual() { echo "- release the Play draft in the console"; }

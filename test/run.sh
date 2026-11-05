@@ -6,6 +6,8 @@ wb="$(cd "$(dirname "$0")/.." && pwd)/bin/werkbank"
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 fails=0
+# Tests must not touch the clipboard of whoever runs them.
+export WB_NO_CLIPBOARD=1
 ok() { printf 'ok   %s\n' "$1"; }
 bad() { printf 'FAIL %s\n' "$1"; fails=$((fails + 1)); }
 # check <name> <command…>: passes if the command succeeds.
@@ -93,6 +95,148 @@ mkdir -p "$repo/tool/werkbank"
 cp -R "$(dirname "$wb")/../bin" "$(dirname "$wb")/../lib" "$repo/tool/werkbank/"
 check "a copy in tool/werkbank acts on its project from anywhere" 'cd / && "$repo/tool/werkbank/bin/werkbank" version | grep -q 1.2.3+45'
 rm -rf "$repo/tool/werkbank"
+
+# Release texts: drafts from merged pull requests, refused while marked, then complete.
+git -C "$repo" -c user.name=t -c user.email=t@example.com commit -q -m init
+git -C "$repo" tag v1.2.3+44
+git -C "$repo" checkout -q -b feature
+git -C "$repo" -c user.name=t -c user.email=t@example.com commit -q --allow-empty -m work
+git -C "$repo" checkout -q -
+git -C "$repo" -c user.name=t -c user.email=t@example.com merge -q --no-ff feature -m 'Merge pull request #7 from o/feature
+
+Neue Ansicht'
+expect_fail "notes: missing texts" notes
+check "notes --draft creates drafts from merged pull requests" \
+  '"$wb" notes --draft >/dev/null 2>&1; grep -q "^- Neue Ansicht" store/ios/testflight/whats_new_45_de-DE.txt && grep -q "<en-US>" store/android/play-notes-45.txt'
+expect_fail "notes: drafts are not finished texts" notes
+printf 'Neu: eine Ansicht.\n' >"$repo/store/ios/testflight/whats_new_45_de-DE.txt"
+printf 'New: a view.\n' >"$repo/store/ios/testflight/whats_new_45_en-US.txt"
+printf '<de-DE>\nNeu: eine Ansicht.\n</de-DE>\n<en-US>\nNew: a view.\n</en-US>\n' >"$repo/store/android/play-notes-45.txt"
+check "notes: complete texts, Play block printed" '"$wb" notes 2>/dev/null | grep "<de-DE>" >/dev/null'
+python3 -c 'print("<de-DE>" + "x" * 501 + "</de-DE>")' >"$repo/store/android/play-notes-45.txt"
+expect_fail "notes: Play notes over 500 characters" notes
+printf '<de-DE>\nNeu.\n</de-DE>\n' >"$repo/store/android/play-notes-45.txt"
+echo aab >"$tmp/a.aab"
+check "play upload (dry run) reads package, track and notes" \
+  'python3 "$(dirname "$wb")/../lib/play_upload.py" --key none --package de.demo.app --aab "$tmp/a.aab" --track alpha --status draft --notes store/android/play-notes-45.txt --dry-run | grep -q "de.demo.app, track alpha (draft), notes: de-DE"'
+check "play upload refuses an odd package name" \
+  '! python3 "$(dirname "$wb")/../lib/play_upload.py" --key none --package "x;rm" --aab "$tmp/a.aab" --dry-run'
+expect_fail "upload-play without WB_PLAY_PACKAGE" upload-play "$tmp/a.aab"
+expect_fail "upload-apple without archive" upload-apple "$tmp/none.xcarchive"
+
+# Device tests with a stand-in flutter: two devices plus the web, one test fails on one device.
+mkdir -p "$tmp/bin" "$repo/integration_test"
+cat >"$tmp/bin/flutter" <<'FAKE'
+#!/usr/bin/env bash
+if [ "$1" = devices ]; then
+  echo '[{"id":"phone1","name":"BoPhone","targetPlatform":"ios"},{"id":"macos","name":"macOS","targetPlatform":"darwin"},{"id":"chrome","name":"Chrome","targetPlatform":"web-javascript"}]'
+  exit 0
+fi
+echo "flutter $*" >>"$FAKE_LOG"
+case "$*" in *--keep-app-running*) ;; *) exit 3 ;; esac
+case "$*" in *--target=integration_test/b_test.dart*"-d phone1"*) exit 1 ;; esac
+exit 0
+FAKE
+chmod +x "$tmp/bin/flutter"
+mkdir -p "$repo/ios" "$repo/macos"
+add integration_test/a_test.dart
+add integration_test/b_test.dart
+check "devicetest: every device but the web, every test, report with the failure" \
+  'export FAKE_LOG="$tmp/flutter.log"; ! PATH="$tmp/bin:$PATH" "$wb" devicetest >/dev/null 2>&1;
+   [ "$(grep -c "flutter drive --keep-app-running" "$FAKE_LOG")" = 4 ] && ! grep -q chrome "$FAKE_LOG" &&
+   grep -q "| BoPhone | integration_test/b_test.dart | FAILED |" build/devicetest/*/report.md &&
+   grep -q "| macOS | integration_test/a_test.dart | ok |" build/devicetest/*/report.md'
+check "devicetest leaves out platforms the project does not have" \
+  'rmdir ios; rm -rf build/devicetest; export FAKE_LOG="$tmp/flutter3.log"; PATH="$tmp/bin:$PATH" "$wb" devicetest >/dev/null 2>&1;
+   ! grep -q phone1 "$FAKE_LOG" && grep -q "\-d macos" "$FAKE_LOG"; s=$?; mkdir ios; exit $s'
+check "devicetest skips a device whose devicetest_before fails" \
+  'cp tool/werkbank.conf "$tmp/conf.bak"; printf "devicetest_before() { [ \"\$2\" != ios ]; }\n" >>tool/werkbank.conf;
+   rm -rf build/devicetest; export FAKE_LOG="$tmp/flutter4.log"; ! PATH="$tmp/bin:$PATH" "$wb" devicetest >/dev/null 2>&1;
+   s=1; ! grep -q phone1 "$FAKE_LOG" && grep -q "| BoPhone | – | skipped" build/devicetest/*/report.md && s=0;
+   cp "$tmp/conf.bak" tool/werkbank.conf; exit $s'
+check "devicetest --device runs one device only" \
+  'rm -rf build/devicetest; export FAKE_LOG="$tmp/flutter2.log"; PATH="$tmp/bin:$PATH" "$wb" devicetest --device macos integration_test/a_test.dart >/dev/null 2>&1;
+   [ "$(grep -c . "$FAKE_LOG")" = 1 ] && grep -q "\-d macos" "$FAKE_LOG"'
+
+# Release: a fresh project with an origin, one product built by a hook.
+rel="$tmp/rel"
+git init -q --bare -b main "$tmp/rel-origin.git"
+git init -q -b main "$rel"
+git -C "$rel" config user.name t
+git -C "$rel" config user.email t@example.com
+printf 'name: rel\nversion: 2.0.0+7\n' >"$rel/pubspec.yaml"
+printf '# Changelog\n\n## 1.0.0\n\n- old\n' >"$rel/CHANGELOG.md"
+mkdir -p "$rel/tool"
+cat >"$rel/tool/werkbank.conf" <<'CONF'
+WB_PLATFORMS_app=''
+verify_release() { echo verified >>build/calls; }
+release_app() { mkdir -p build/release; echo "built upload=$1" >>build/calls; echo x >build/release/rel-2.0.0+7.zip; }
+CONF
+printf 'build/\n' >"$rel/.gitignore"
+git -C "$rel" add -A
+git -C "$rel" commit -q -m init
+git -C "$rel" remote add origin "$tmp/rel-origin.git"
+git -C "$rel" push -q -u origin main
+rr() { (cd "$rel" && "$wb" "$@"); }
+if rr release --dry-run >/dev/null 2>"$tmp/err"; then bad "release: dry run refuses a version without changelog section"; else
+  if grep -q 'no finished section "## 2.0.0' "$tmp/err"; then ok "release: dry run refuses a version without changelog section"; else bad "release: dry run names the missing section"; fi
+fi
+printf '# Changelog\n\n## 2.0.0 – 2026-11-05\n\n- new\n\n## 1.0.0\n\n- old\n' >"$rel/CHANGELOG.md"
+printf '# Änderungen\n\n## 2.0.0 – 2026-11-05\n\n- neu\n' >"$rel/CHANGELOG.de.md"
+git -C "$rel" add -A
+git -C "$rel" commit -q -m changelog
+git -C "$rel" push -q
+check "release: changelog section without the heading" '[ "$(cd "$rel" && . "$(dirname "$wb")/../lib/common.sh" && wb_load_conf && wb_changelog_section 2.0.0)" = "- new" ]'
+check "release: dry run is ready and changes nothing" 'rr release --dry-run 2>&1 | grep "would release app 2.0.0+7" >/dev/null && [ -z "$(git -C "$rel" tag)" ] && [ ! -e "$rel/build/calls" ]'
+echo dirty >"$rel/dirty.txt"
+check "release: refuses uncommitted changes" '! rr release >/dev/null 2>&1 && [ -z "$(git -C "$rel" tag)" ]'
+rm "$rel/dirty.txt"
+check "release: verify, build, tag pushed, report" 'rr release >/dev/null 2>&1 && grep -q verified "$rel/build/calls" && grep -q "built upload=false" "$rel/build/calls" &&
+   git --git-dir="$tmp/rel-origin.git" rev-parse -q --verify refs/tags/v2.0.0+7 >/dev/null && grep -q "tag v2.0.0+7" "$rel"/build/release/report-*.md'
+check "release: a released version is skipped" 'rr release 2>&1 | grep "already released" >/dev/null'
+check "release: products and tag prefixes from the conf" \
+  'printf "WB_PRODUCTS=\"app addon\"\nWB_VERSION_FILE_addon=addon.yaml\nWB_TAG_PREFIX_app=app-v\n" >>"$rel/tool/werkbank.conf"; printf "version: \"1.4.0\"\n" >"$rel/addon.yaml";
+   out=$(cd "$rel" && . "$(dirname "$wb")/../lib/common.sh" && wb_load_conf && echo "$(wb_product_version addon) $(wb_tag_prefix addon) $(wb_tag_prefix app)"); [ "$out" = "1.4.0 addon-v app-v" ]'
+
+# Changelog: "Unreleased" becomes the version, otherwise a marked draft; heading format checked.
+cl="$tmp/cl"
+git init -q -b main "$cl"
+printf 'name: cl\nversion: 3.1.0+9\n' >"$cl/pubspec.yaml"
+printf '# Changelog\n\nIntro.\n\n## Unreleased\n\n### New\n\n- A view\n\n## 3.0.0 – 2026-10-01\n\n- old\n' >"$cl/CHANGELOG.md"
+cc() { (cd "$cl" && "$wb" "$@"); }
+check "changelog: missing German file and section" '! cc changelog >/dev/null 2>&1'
+check "changelog --draft: Unreleased becomes the version with today, German drafted" \
+  'cc changelog --draft >/dev/null 2>&1; grep -q "^## 3.1.0 – $(date +%F)$" "$cl/CHANGELOG.md" && ! grep -q Unreleased "$cl/CHANGELOG.md" &&
+   grep -q "^## 3.1.0 – " "$cl/CHANGELOG.de.md" && grep -q ENTWURF "$cl/CHANGELOG.de.md"'
+check "changelog: a draft is not finished" '! cc changelog >/dev/null 2>&1'
+sed -i.bak '/ENTWURF/d' "$cl/CHANGELOG.de.md" && rm "$cl/CHANGELOG.de.md.bak"
+check "changelog: complete in both languages" 'cc changelog >/dev/null 2>&1'
+sed -i.bak 's/^## 3.1.0 – .*/## 3.1.0/' "$cl/CHANGELOG.md" && rm "$cl/CHANGELOG.md.bak"
+check "changelog: heading needs the date" '! cc changelog >/dev/null 2>&1'
+
+# Sites: preview builds only, --live deploys to gh-pages (stand-in hugo, local "GitHub").
+cat >"$tmp/bin/hugo" <<'FAKE'
+#!/usr/bin/env bash
+while [ $# -gt 0 ]; do [ "$1" = --destination ] && dest=$2; shift; done
+mkdir -p "$dest" && echo "<h1>site</h1>" >"$dest/index.html"
+FAKE
+chmod +x "$tmp/bin/hugo"
+mkdir -p "$tmp/gh/o" "$rel/site"
+git init -q --bare -b main "$tmp/gh/o/pages.git"
+echo "WB_SITES='web=site|https://example.org/|ghpages:o/pages:example.org'" >>"$rel/tool/werkbank.conf"
+check "site-deploy: preview builds, deploys nothing" 'PATH="$tmp/bin:$PATH" rr site-deploy web 2>&1 | grep Preview >/dev/null && ! git --git-dir="$tmp/gh/o/pages.git" rev-parse -q --verify gh-pages >/dev/null'
+check "site-deploy --live: gh-pages with CNAME and .nojekyll" \
+  'PATH="$tmp/bin:$PATH" WB_GIT_BASE="$tmp/gh/" rr site-deploy web --live >/dev/null 2>&1 &&
+   [ "$(git --git-dir="$tmp/gh/o/pages.git" show gh-pages:CNAME)" = example.org ] && git --git-dir="$tmp/gh/o/pages.git" show gh-pages:.nojekyll >/dev/null &&
+   git --git-dir="$tmp/gh/o/pages.git" show gh-pages:index.html | grep -q site'
+git clone -q "$tmp/gh/o/pages.git" "$tmp/pages-edit" -b gh-pages
+mkdir -p "$tmp/pages-edit/socials" && echo social >"$tmp/pages-edit/socials/index.html"
+git -C "$tmp/pages-edit" add -A && git -C "$tmp/pages-edit" -c user.name=t -c user.email=t@e commit -q -m socials && git -C "$tmp/pages-edit" push -q
+echo "WB_SITE_KEEP_web='socials'" >>"$rel/tool/werkbank.conf"
+check "site-deploy --live keeps folders the build lacks (WB_SITE_KEEP_<name>)" \
+  'PATH="$tmp/bin:$PATH" WB_GIT_BASE="$tmp/gh/" rr site-deploy web --live >/dev/null 2>&1 &&
+   git --git-dir="$tmp/gh/o/pages.git" show gh-pages:socials/index.html | grep -q social'
+expect_fail "site-deploy: unknown site" site-deploy nope
 
 expect_fail "android without key.properties" android
 expect_fail "unknown command" frobnicate
