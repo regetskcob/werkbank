@@ -84,11 +84,13 @@ Watch-App, Seiten-Deploy), steht als eigener Befehl daneben.
   Monat für alle). Ein voller `verify` auf sauberem Arbeitsbaum merkt sich den Commit,
   `tool/release.sh push` setzt danach den Status `werkbank/verify` auf GitHub. Die PR-CI
   beginnt mit einem Job `gate`, der diesen Status für den Kopf des PRs abfragt; ist er da,
-  überspringen die teuren Jobs (`needs: gate`, `if: needs.gate.outputs.verified != 'true'`).
+  überspringen die teuren Jobs (`needs: gate`, `if: ${{ !cancelled() && needs.gate.outputs.verified != 'true' }}`).
   Ohne Stempel (geändert nach `verify`, gewöhnliches `git push`, `--quick`) läuft alles.
   Prüft die PR-CI eines Projekts nur `verify --quick`, stempelt mit `WB_CI_VERIFY=quick`
   auch der schnelle Lauf.
-  Tags und `workflow_dispatch` prüfen immer voll. Vorlage für den Job:
+  Tags und `workflow_dispatch` prüfen immer voll. Das Gate zählt nur Statusmeldungen des
+  Repo-Besitzers (ein persönliches Repo); kann es GitHub nicht fragen, prüft die CI voll
+  (`!cancelled()`, Fehler der Abfrage gelten als „kein Stempel“). Vorlage für den Job:
 
   ```yaml
   permissions:
@@ -110,7 +112,8 @@ Watch-App, Seiten-Deploy), steht als eigener Befehl daneben.
             if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
               for _ in 1 2 3; do
                 state=$(gh api "repos/$GITHUB_REPOSITORY/commits/$SHA/statuses" \
-                  --jq '[.[] | select(.context == "werkbank/verify")][0].state // ""')
+                  --jq '[.[] | select(.context == "werkbank/verify" and .creator.login == "'"$GITHUB_REPOSITORY_OWNER"'")][0].state // ""' \
+                  2>/dev/null || true)
                 if [ "$state" = success ]; then verified=true; break; fi
                 sleep 10
               done
