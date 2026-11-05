@@ -63,7 +63,8 @@ Watch-App, Seiten-Deploy), steht als eigener Befehl daneben.
 
 | Befehl | Was | Quelle |
 |---|---|---|
-| `verify` | vor jedem Push: Layout, Übersetzungen, Format, Analyse, Tests, dann die Hooks `verify_quick_extra` und `verify_extra` | `werkbank verify` |
+| `verify` | vor jedem Push: Layout, Übersetzungen, Format, Analyse, Tests, dann die Hooks `verify_quick_extra` und `verify_extra`; grün bei sauberem Arbeitsbaum merkt es sich den Commit (Stempel) | `werkbank verify` |
+| `push [args]` | `git push`, danach – wenn `verify` genau diesen Commit geprüft hat – Status `werkbank/verify` auf GitHub, damit die PR-CI ihre Prüfungen überspringt | `werkbank push` |
 | `android` | signiertes AAB (baut fastlane oder ein Projektskript, nimmt `werkbank collect aab <pfad> [variante]` es auf) nach `build/release/<app>-<version>.aab`, Prüfung gegen den Debug-Schlüssel, Symbole wegsichern | `werkbank android` |
 | `ios` | IPA nach `build/release/<app>-<version>.ipa`, mit `--upload` zu App Store Connect | `werkbank ios` |
 | `changelog [--draft]` | Changelog-Abschnitt der Version in allen Sprachen fertig? `--draft` macht aus „Unreleased“ die Version | `werkbank changelog` |
@@ -79,6 +80,41 @@ Watch-App, Seiten-Deploy), steht als eigener Befehl daneben.
 - **Version** nur in `pubspec.yaml` (`x.y.z+build`); Skripte lesen sie mit `werkbank version`.
 - **CI** läuft auf Pull Requests (Linux) mit denselben Schritten wie `verify --quick`; teure
   Builds (macOS, Windows) nur auf Tag oder von Hand. Release-Builds entstehen lokal.
+- **Stempel statt doppelter Prüfung:** Actions-Minuten privater Repos sind knapp (3.000 im
+  Monat für alle). Ein voller `verify` auf sauberem Arbeitsbaum merkt sich den Commit,
+  `tool/release.sh push` setzt danach den Status `werkbank/verify` auf GitHub. Die PR-CI
+  beginnt mit einem Job `gate`, der diesen Status für den Kopf des PRs abfragt; ist er da,
+  überspringen die teuren Jobs (`needs: gate`, `if: needs.gate.outputs.verified != 'true'`).
+  Ohne Stempel (geändert nach `verify`, gewöhnliches `git push`, `--quick`) läuft alles.
+  Tags und `workflow_dispatch` prüfen immer voll. Vorlage für den Job:
+
+  ```yaml
+  permissions:
+    contents: read
+    statuses: read
+  jobs:
+    gate:
+      runs-on: ubuntu-latest
+      timeout-minutes: 3
+      outputs:
+        verified: ${{ steps.stamp.outputs.verified }}
+      steps:
+        - id: stamp
+          env:
+            GH_TOKEN: ${{ github.token }}
+            SHA: ${{ github.event.pull_request.head.sha }}
+          run: |
+            verified=false
+            if [ "$GITHUB_EVENT_NAME" = pull_request ]; then
+              for _ in 1 2 3; do
+                state=$(gh api "repos/$GITHUB_REPOSITORY/commits/$SHA/statuses" \
+                  --jq '[.[] | select(.context == "werkbank/verify")][0].state // ""')
+                if [ "$state" = success ]; then verified=true; break; fi
+                sleep 10
+              done
+            fi
+            echo "verified=$verified" >> "$GITHUB_OUTPUT"
+  ```
 - **Ausgaben:** Erzeugtes nach `build/`, Release-Dateien nach `build/release/`, Symbole von
   `--split-debug-info` nach `~/keys/symbols/<app>/<version>/<plattform>/`.
 

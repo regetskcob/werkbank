@@ -149,6 +149,52 @@ wb_verify() {
   fi
   wb_site_check
   say "All green"
+  wb_stamp_verified
+}
+
+# The full verify of a clean working tree is the pull request CI run ahead of
+# time: remember the commit, so `werkbank push` can tell GitHub (status
+# werkbank/verify) and the CI's gate job skips the same checks. Changes or
+# untracked files would make the run say nothing about the commit: no stamp.
+wb_stamp_file() { echo "$(git rev-parse --git-dir)/werkbank-verified"; }
+
+wb_stamp_verified() {
+  if [ -n "$(git status --porcelain --untracked-files=all)" ]; then
+    rm -f "$(wb_stamp_file)"
+    say "Not stamped: the working tree has changes (the CI will run in full)"
+    return 0
+  fi
+  git rev-parse HEAD >"$(wb_stamp_file)"
+  say "Stamped $(git rev-parse --short HEAD) as verified – push with: tool/release.sh push"
+}
+
+# Pushes (arguments as for git push), then marks the pushed HEAD as verified
+# on GitHub when verify passed for exactly that commit. Without a stamp, or
+# when gh cannot set it, the CI simply runs in full.
+wb_push() {
+  git push "$@"
+  local file sha head slug
+  file=$(wb_stamp_file)
+  head=$(git rev-parse HEAD)
+  if [ ! -f "$file" ]; then
+    warn "no verify stamp – the CI runs in full (tool/release.sh verify first saves it)"
+    return 0
+  fi
+  sha=$(cat "$file")
+  if [ "$sha" != "$head" ]; then
+    warn "verify ran for ${sha:0:7}, HEAD is ${head:0:7} – the CI runs in full"
+    return 0
+  fi
+  if ! slug=$(gh repo view --json nameWithOwner -q .nameWithOwner 2>/dev/null); then
+    warn "gh cannot see the repository – the CI runs in full"
+    return 0
+  fi
+  if gh api -X POST "repos/$slug/statuses/$head" -f state=success -f context=werkbank/verify \
+    -f "description=tool/release.sh verify passed locally" >/dev/null; then
+    say "GitHub: ${head:0:7} verified – the CI's gate skips its checks"
+  else
+    warn "could not set the status – the CI runs in full"
+  fi
 }
 
 # ---------------------------------------------------------------------------

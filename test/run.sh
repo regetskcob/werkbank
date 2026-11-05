@@ -261,6 +261,38 @@ check "site-deploy --live keeps folders the build lacks (WB_SITE_KEEP_<name>)" \
    git --git-dir="$tmp/gh/o/pages.git" show gh-pages:socials/index.html | grep -q social'
 expect_fail "site-deploy: unknown site" site-deploy nope
 
+# Verify stamp: a clean tree is stamped, push marks exactly that commit on GitHub.
+st="$tmp/stamp"
+git init -q --bare -b main "$tmp/stamp-origin.git"
+git init -q -b main "$st"
+git -C "$st" -c user.name=t -c user.email=t@e commit -q --allow-empty -m one
+git -C "$st" remote add origin "$tmp/stamp-origin.git"
+mkdir -p "$tmp/ghbin"
+cat >"$tmp/ghbin/gh" <<'FAKE'
+#!/usr/bin/env bash
+case "$1" in
+  repo) echo o/stamp ;;
+  api) echo "$*" >>"$GH_LOG" ;;
+esac
+FAKE
+chmod +x "$tmp/ghbin/gh"
+# shellcheck source=/dev/null
+sw() { (cd "$st" && . "$(dirname "$wb")/../lib/common.sh" && "$@"); }
+check "stamp: a clean tree after verify is stamped with HEAD" \
+  'sw wb_stamp_verified >/dev/null && [ "$(cat "$st/.git/werkbank-verified")" = "$(git -C "$st" rev-parse HEAD)" ]'
+echo x >"$st/new.txt"
+check "stamp: untracked files mean no stamp" '! { sw wb_stamp_verified >/dev/null; [ -f "$st/.git/werkbank-verified" ]; }'
+rm "$st/new.txt"
+sw wb_stamp_verified >/dev/null
+check "push: the stamped HEAD gets status werkbank/verify" \
+  'export GH_LOG="$tmp/gh1.log"; PATH="$tmp/ghbin:$PATH" sw wb_push -q -u origin main >/dev/null 2>&1 &&
+   grep -q "statuses/$(git -C "$st" rev-parse HEAD) -f state=success -f context=werkbank/verify" "$GH_LOG"'
+git -C "$st" -c user.name=t -c user.email=t@e commit -q --allow-empty -m two
+check "push: a commit after verify gets no status, the push still happens" \
+  'export GH_LOG="$tmp/gh2.log"; PATH="$tmp/ghbin:$PATH" sw wb_push -q >/dev/null 2>"$tmp/err" &&
+   [ ! -s "$GH_LOG" ] && grep -q "CI runs in full" "$tmp/err" &&
+   [ "$(git --git-dir="$tmp/stamp-origin.git" rev-parse main)" = "$(git -C "$st" rev-parse HEAD)" ]'
+
 expect_fail "android without key.properties" android
 expect_fail "unknown command" frobnicate
 
