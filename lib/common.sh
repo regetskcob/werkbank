@@ -360,8 +360,8 @@ wb_store_notes() {
   elif grep -q 'ENTWURF' "$play"; then
     warn "still a draft: $play"
     missing=1
-  elif ! python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import play_upload; play_upload.parse_notes(open(sys.argv[2]).read())' \
-    "$WB_LIB" "$play" >/dev/null; then
+  elif ! python3 -c 'import sys; sys.path.insert(0, sys.argv[1]); import play_upload; play_upload.parse_notes(open(sys.argv[2]).read(), sys.argv[3].split())' \
+    "$WB_LIB" "$play" "$WB_STORE_LANGS" >/dev/null; then
     missing=1
   fi
   [ "$missing" = 0 ] || die "release texts of build $build incomplete (werkbank notes --draft creates drafts)"
@@ -434,9 +434,10 @@ wb_upload_play() {
   notes="store/android/play-notes-$(wb_version build).txt"
   [ -f "$notes" ] || die "$notes missing – werkbank notes --draft"
   grep -q ENTWURF "$notes" && die "$notes is still a draft"
+  # The same checks as werkbank notes: every store language, at most 500 characters each.
   say "Uploading $(basename "$aab") to Play ($track)"
   python3 "$WB_LIB/play_upload.py" --key "$WB_PLAY_KEY" --package "$WB_PLAY_PACKAGE" --aab "$aab" \
-    --track "$track" --status "$WB_PLAY_STATUS" --notes "$notes" ${WB_DRY_RUN:+--dry-run}
+    --track "$track" --status "$WB_PLAY_STATUS" --notes "$notes" --langs "$WB_STORE_LANGS" ${WB_DRY_RUN:+--dry-run}
 }
 
 # ---------------------------------------------------------------------------
@@ -925,7 +926,8 @@ for d in json.load(sys.stdin):
       continue
     fi
     for target in "${targets[@]}"; do
-      log="$out/$(echo "$name-$(basename "$target" .dart)" | tr -c 'A-Za-z0-9._\n-' '_').log"
+      # The id too: two devices may share a name ("iPhone").
+      log="$out/$(echo "$name-$id-$(basename "$target" .dart)" | tr -c 'A-Za-z0-9._\n-' '_').log"
       start=$(date +%s)
       if flutter drive --keep-app-running --driver="$driver" --target="$target" -d "$id" --no-pub >"$log" 2>&1; then
         result=ok

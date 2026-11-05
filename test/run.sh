@@ -115,6 +115,8 @@ printf '<de-DE>\nNeu: eine Ansicht.\n</de-DE>\n<en-US>\nNew: a view.\n</en-US>\n
 check "notes: complete texts, Play block printed" '"$wb" notes 2>/dev/null | grep "<de-DE>" >/dev/null'
 python3 -c 'print("<de-DE>" + "x" * 501 + "</de-DE>")' >"$repo/store/android/play-notes-45.txt"
 expect_fail "notes: Play notes over 500 characters" notes
+printf '<de-DE>\nNur Deutsch.\n</de-DE>\n' >"$repo/store/android/play-notes-45.txt"
+expect_fail "notes: a store language without Play notes" notes
 printf '<de-DE>\nNeu.\n</de-DE>\n' >"$repo/store/android/play-notes-45.txt"
 echo aab >"$tmp/a.aab"
 check "play upload (dry run) reads package, track and notes" \
