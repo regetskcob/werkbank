@@ -111,10 +111,11 @@ sonst `<p>-v`) und Plattformen (`WB_PLATFORMS_<p>`, für die App die vorhandenen
 ipa|macos`, `xcodebuild archive`) löst die Swift-Pakete neu auf und kann
 `ios/**/Package.resolved` und `macos/**/Package.resolved` umschreiben. Dann ist der Checkout
 nicht mehr sauber und der nächste Release-Schritt bricht mit „uncommitted changes“ ab.
-`werkbank ios` und jeder Build in `release` (auch Hooks `build_<plattform>` und
-`release_<produkt>`) prüfen das gleich danach (`wb_resolved_guard`) und brechen vor Hochladen
-und Tag ab. Eigene Apple-Builds eines Projekts (z. B. `cmd_macos`) rufen `wb_resolved_guard`
-nach dem Archiv auf. Dann: die Dateien per PR committen („Swift-Pakete wie beim Store-Build
+`werkbank ios` und jeder werkbank-Build in `release` prüfen das gleich danach
+(`wb_resolved_guard`) und brechen vor Hochladen und Tag ab. Eigene Apple-Builds eines Projekts
+(z. B. `cmd_macos`) und Hooks, die selbst hochladen (`build_<plattform>`, `release_<produkt>`),
+rufen `wb_resolved_guard` zwischen Build und Upload auf; die werkbank prüft nach dem Hook nur
+noch einmal und kann dann zwar den Tag, aber keinen schon erfolgten Upload mehr verhindern. Dann: die Dateien per PR committen („Swift-Pakete wie beim Store-Build
 aufgelöst“) und den Build vom sauberen `main` wiederholen – der Build hat genau diese
 Versionen benutzt, sie gehören ins Repo. Die Vorprüfung nennt geänderte `Package.resolved`
 eigens; `werkbank resolved` prüft von Hand.
