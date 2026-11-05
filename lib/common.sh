@@ -223,13 +223,19 @@ wb_resolved_changed() {
 # anything is uploaded or tagged. The build used exactly these versions, so they
 # belong in the repository – committed via PR, then the build is repeated from
 # the clean main (STANDARD.md, Release).
+#
+# Hooks that build and upload themselves (release_<product>, build_<platform>)
+# must call it between their build and their upload: werkbank checks again only
+# after the hook returns, when it can still stop the tag but no longer the
+# upload. That late check passes "after-hook" and says so.
 wb_resolved_guard() {
   local files
   files=$(wb_resolved_changed)
   [ -z "$files" ] && return 0
-  local f
+  local f outcome="nothing was uploaded or tagged"
+  [ "${1:-}" = after-hook ] && outcome="nothing was tagged; if the hook uploaded without calling wb_resolved_guard first, that build is already in the store"
   while IFS= read -r f; do printf '  %s\n' "$f" >&2; done <<<"$files"
-  die "the build resolved the Swift packages anew (Package.resolved above) – commit them via PR (\"Swift-Pakete wie beim Store-Build aufgelöst\"), then build again from the clean main; nothing was uploaded or tagged"
+  die "the build resolved the Swift packages anew (Package.resolved above) – commit them via PR (\"Swift-Pakete wie beim Store-Build aufgelöst\"), then build again from the clean main; $outcome"
 }
 
 # Signed App Bundle. Arguments after -- go to flutter build appbundle, after
@@ -667,7 +673,7 @@ wb_release_build() {
   local p=$1 upload=$2 platform
   if wb_has_hook "release_$p"; then
     "release_$p" "$upload"
-    wb_resolved_guard
+    wb_resolved_guard after-hook
     return
   fi
   for platform in $(wb_platforms "$p"); do
@@ -683,6 +689,8 @@ wb_release_build() {
       *)
         wb_has_hook "build_$platform" || die "no werkbank build for $platform – define build_$platform in tool/werkbank.conf"
         "build_$platform" "$upload"
+        wb_resolved_guard after-hook
+        continue
         ;;
     esac
     wb_resolved_guard

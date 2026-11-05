@@ -195,6 +195,8 @@ check "release: dry run is ready and changes nothing" 'rr release --dry-run 2>&1
 echo dirty >"$rel/dirty.txt"
 check "release: refuses uncommitted changes" '! rr release >/dev/null 2>&1 && [ -z "$(git -C "$rel" tag)" ]'
 rm "$rel/dirty.txt"
+check "resolved: a check outside a hook promises no upload happened" \
+  'echo resolved-anew >"$rel/$resolved"; ! (cd "$rel" && . "$(dirname "$wb")/../lib/common.sh" && wb_resolved_guard) 2>"$tmp/err"; git -C "$rel" checkout -q -- "$resolved"; grep -q "nothing was uploaded or tagged" "$tmp/err"'
 check "resolved: unchanged Package.resolved passes" 'rr resolved >/dev/null 2>&1'
 echo resolved-anew >"$rel/$resolved"
 check "resolved: a rewritten Package.resolved fails and is named" '! rr resolved 2>"$tmp/err" >/dev/null && grep -q "$resolved" "$tmp/err"'
@@ -205,7 +207,7 @@ echo new >"$rel/macos/Runner.xcworkspace/Package.resolved"
 check "resolved: a new untracked Package.resolved counts" '! rr resolved >/dev/null 2>&1'
 rm -r "$rel/macos"
 check "release: a build that rewrites Package.resolved stops before the tag" \
-  '! FAKE_RESOLVE="$resolved" rr release 2>"$tmp/err" >/dev/null && grep -q "commit them via PR" "$tmp/err" && [ -z "$(git -C "$rel" tag)" ] &&
+  '! FAKE_RESOLVE="$resolved" rr release 2>"$tmp/err" >/dev/null && grep -q "commit them via PR" "$tmp/err" && grep -q "already in the store" "$tmp/err" && [ -z "$(git -C "$rel" tag)" ] &&
    ! git --git-dir="$tmp/rel-origin.git" rev-parse -q --verify refs/tags/v2.0.0+7 >/dev/null'
 git -C "$rel" checkout -q -- "$resolved"
 rm -f "$rel/build/calls"
