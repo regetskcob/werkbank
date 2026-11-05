@@ -229,6 +229,13 @@ check "site-deploy --live: gh-pages with CNAME and .nojekyll" \
   'PATH="$tmp/bin:$PATH" WB_GIT_BASE="$tmp/gh/" rr site-deploy web --live >/dev/null 2>&1 &&
    [ "$(git --git-dir="$tmp/gh/o/pages.git" show gh-pages:CNAME)" = example.org ] && git --git-dir="$tmp/gh/o/pages.git" show gh-pages:.nojekyll >/dev/null &&
    git --git-dir="$tmp/gh/o/pages.git" show gh-pages:index.html | grep -q site'
+git clone -q "$tmp/gh/o/pages.git" "$tmp/pages-edit" -b gh-pages
+mkdir -p "$tmp/pages-edit/socials" && echo social >"$tmp/pages-edit/socials/index.html"
+git -C "$tmp/pages-edit" add -A && git -C "$tmp/pages-edit" -c user.name=t -c user.email=t@e commit -q -m socials && git -C "$tmp/pages-edit" push -q
+echo "WB_SITE_KEEP_web='socials'" >>"$rel/tool/werkbank.conf"
+check "site-deploy --live keeps folders the build lacks (WB_SITE_KEEP_<name>)" \
+  'PATH="$tmp/bin:$PATH" WB_GIT_BASE="$tmp/gh/" rr site-deploy web --live >/dev/null 2>&1 &&
+   git --git-dir="$tmp/gh/o/pages.git" show gh-pages:socials/index.html | grep -q social'
 expect_fail "site-deploy: unknown site" site-deploy nope
 
 expect_fail "android without key.properties" android

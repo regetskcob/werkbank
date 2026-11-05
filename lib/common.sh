@@ -777,7 +777,8 @@ wb_release() {
 
 # WB_SITES lists the sites as <name>=<folder>|<base URL>|<target>, targets:
 #   blog:<folder below static/>   the blog repository (WEBSITE_REPO), live = push
-#   ghpages:<owner/repo>[:<domain>] gh-pages branch of that repository
+#   ghpages:<owner/repo>[:<domain>] gh-pages branch of that repository; folders in
+#                                 WB_SITE_KEEP_<name> stay when the build lacks them
 #   workflow:<file>               a deploy workflow of this repository (gh workflow run)
 #   hook                          the project's site_deploy_<name> <built folder> <live>
 # Preview builds into build/site/<folder>/ and changes nothing elsewhere; --live
@@ -803,7 +804,7 @@ wb_site_deploy() {
     fi
     case "$target" in
       blog:*) wb_site_blog "$out" "${target#blog:}" --push ;;
-      ghpages:*) wb_site_ghpages "$out" "${target#ghpages:}" ;;
+      ghpages:*) WB_SITE_NAME=$key wb_site_ghpages "$out" "${target#ghpages:}" ;;
       workflow:*) gh workflow run "${target#workflow:}" --ref main && say "Workflow ${target#workflow:} started" ;;
       hook)
         wb_has_hook "site_deploy_$key" || die "site_deploy_$key missing in tool/werkbank.conf"
@@ -827,8 +828,20 @@ wb_site_ghpages() {
     git clone -q --depth 1 "${WB_GIT_BASE:-https://github.com/}$repo${WB_GIT_SUFFIX:-.git}" "$work/pages"
     git -C "$work/pages" checkout -q --orphan gh-pages
   fi
+  # Folders of WB_SITE_KEEP_<name> stay as they are when this build has none of
+  # its own (made elsewhere, e.g. from private files only the main checkout has).
+  local keepvar="WB_SITE_KEEP_${WB_SITE_NAME:-}" k
+  mkdir -p "$work/kept"
+  for k in ${!keepvar:-}; do
+    if [ ! -e "$src/$k" ] && [ -e "$work/pages/$k" ]; then
+      mkdir -p "$work/kept/$(dirname "$k")"
+      mv "$work/pages/$k" "$work/kept/$k"
+      say "kept $k from the published site"
+    fi
+  done
   find "$work/pages" -mindepth 1 -maxdepth 1 ! -name .git -exec rm -rf {} +
   cp -R "$src/." "$work/pages/"
+  cp -R "$work/kept/." "$work/pages/"
   [ -z "$domain" ] || echo "$domain" >"$work/pages/CNAME"
   touch "$work/pages/.nojekyll"
   git -C "$work/pages" add -A

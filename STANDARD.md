@@ -189,7 +189,7 @@ tool/release.sh site <name|all> --live   # ausliefern
 | Ziel | Ausliefern |
 |---|---|
 | `blog:<unterordner>` | in den Blog (`regetskcob.github.io/static/<unterordner>/`), Push |
-| `ghpages:<owner/repo>[:<domain>]` | gh-pages-Branch des Repos, mit `CNAME` und `.nojekyll` |
+| `ghpages:<owner/repo>[:<domain>]` | gh-pages-Branch des Repos, mit `CNAME` und `.nojekyll`; Ordner in `WB_SITE_KEEP_<name>` bleiben stehen, wenn der Bau sie nicht hat |
 | `workflow:<datei>` | startet den Deploy-Workflow des Repos (`gh workflow run`) |
 | `hook` | eigene Funktion `site_deploy_<name>` (z. B. FTPS über einen Branch) |
 
