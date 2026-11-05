@@ -7,6 +7,7 @@
 #   tool/release.sh ios [--upload]     IPA → build/release/, optionally to App Store Connect
 #   tool/release.sh release [--dry-run] [--upload]   the release: preflight, build, upload, tag, GitHub, sites
 #   tool/release.sh site <name|all> [--live]          landing page: preview, or deploy
+#   tool/release.sh changelog [--draft]               changelog section of this version, in every language
 #   tool/release.sh notes [--draft]    release texts of this build (TestFlight, Play) complete?
 #   tool/release.sh upload-apple <xcarchive> | upload-play [aab] [track]
 #   tool/release.sh devicetest         integration tests on every connected device
@@ -24,9 +25,10 @@ case "${1:-}" in
   ios) shift; wb_ios "$@" ;;
   release) shift; wb_release "$@" ;;
   site) shift; wb_site_deploy "$@" ;;
+  changelog) shift; wb_changelog "$@" ;;
   notes) shift; wb_store_notes "$@" ;;
   upload-apple) shift; wb_upload_apple "$@" ;;
   upload-play) shift; wb_upload_play "$@" ;;
   devicetest) shift; wb_devicetest "$@" ;;
-  *) sed -n '2,12p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
+  *) sed -n '2,13p' "$0" | sed 's/^# \{0,1\}//'; exit 2 ;;
 esac

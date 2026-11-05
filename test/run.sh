@@ -179,10 +179,12 @@ git -C "$rel" remote add origin "$tmp/rel-origin.git"
 git -C "$rel" push -q -u origin main
 rr() { (cd "$rel" && "$wb" "$@"); }
 if rr release --dry-run >/dev/null 2>"$tmp/err"; then bad "release: dry run refuses a version without changelog section"; else
-  if grep -q 'no section "## 2.0.0"' "$tmp/err"; then ok "release: dry run refuses a version without changelog section"; else bad "release: dry run names the missing section"; fi
+  if grep -q 'no finished section "## 2.0.0' "$tmp/err"; then ok "release: dry run refuses a version without changelog section"; else bad "release: dry run names the missing section"; fi
 fi
 printf '# Changelog\n\n## 2.0.0 – 2026-11-05\n\n- new\n\n## 1.0.0\n\n- old\n' >"$rel/CHANGELOG.md"
-git -C "$rel" commit -q -am changelog
+printf '# Änderungen\n\n## 2.0.0 – 2026-11-05\n\n- neu\n' >"$rel/CHANGELOG.de.md"
+git -C "$rel" add -A
+git -C "$rel" commit -q -m changelog
 git -C "$rel" push -q
 check "release: changelog section without the heading" '[ "$(cd "$rel" && . "$(dirname "$wb")/../lib/common.sh" && wb_load_conf && wb_changelog_section 2.0.0)" = "- new" ]'
 check "release: dry run is ready and changes nothing" 'rr release --dry-run 2>&1 | grep "would release app 2.0.0+7" >/dev/null && [ -z "$(git -C "$rel" tag)" ] && [ ! -e "$rel/build/calls" ]'
@@ -195,6 +197,22 @@ check "release: a released version is skipped" 'rr release 2>&1 | grep "already 
 check "release: products and tag prefixes from the conf" \
   'printf "WB_PRODUCTS=\"app addon\"\nWB_VERSION_FILE_addon=addon.yaml\nWB_TAG_PREFIX_app=app-v\n" >>"$rel/tool/werkbank.conf"; printf "version: \"1.4.0\"\n" >"$rel/addon.yaml";
    out=$(cd "$rel" && . "$(dirname "$wb")/../lib/common.sh" && wb_load_conf && echo "$(wb_product_version addon) $(wb_tag_prefix addon) $(wb_tag_prefix app)"); [ "$out" = "1.4.0 addon-v app-v" ]'
+
+# Changelog: "Unreleased" becomes the version, otherwise a marked draft; heading format checked.
+cl="$tmp/cl"
+git init -q -b main "$cl"
+printf 'name: cl\nversion: 3.1.0+9\n' >"$cl/pubspec.yaml"
+printf '# Changelog\n\nIntro.\n\n## Unreleased\n\n### New\n\n- A view\n\n## 3.0.0 – 2026-10-01\n\n- old\n' >"$cl/CHANGELOG.md"
+cc() { (cd "$cl" && "$wb" "$@"); }
+check "changelog: missing German file and section" '! cc changelog >/dev/null 2>&1'
+check "changelog --draft: Unreleased becomes the version with today, German drafted" \
+  'cc changelog --draft >/dev/null 2>&1; grep -q "^## 3.1.0 – $(date +%F)$" "$cl/CHANGELOG.md" && ! grep -q Unreleased "$cl/CHANGELOG.md" &&
+   grep -q "^## 3.1.0 – " "$cl/CHANGELOG.de.md" && grep -q ENTWURF "$cl/CHANGELOG.de.md"'
+check "changelog: a draft is not finished" '! cc changelog >/dev/null 2>&1'
+sed -i.bak '/ENTWURF/d' "$cl/CHANGELOG.de.md" && rm "$cl/CHANGELOG.de.md.bak"
+check "changelog: complete in both languages" 'cc changelog >/dev/null 2>&1'
+sed -i.bak 's/^## 3.1.0 – .*/## 3.1.0/' "$cl/CHANGELOG.md" && rm "$cl/CHANGELOG.md.bak"
+check "changelog: heading needs the date" '! cc changelog >/dev/null 2>&1'
 
 # Sites: preview builds only, --live deploys to gh-pages (stand-in hugo, local "GitHub").
 cat >"$tmp/bin/hugo" <<'FAKE'

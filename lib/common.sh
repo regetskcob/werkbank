@@ -49,6 +49,7 @@ wb_load_conf() {
   WB_DEVICETEST_TARGETS=""
   WB_PRODUCTS="app"
   WB_CHANGELOG="CHANGELOG.md"
+  WB_CHANGELOG_LANGS="en de"
   WB_GH_RELEASE_REPO=""
   WB_SITES=""
   WB_RELEASE_SITES=""
@@ -314,20 +315,29 @@ wb_store_notes() {
     local since changes
     since=$(git describe --tags --abbrev=0 --match "${WB_APP_TAG_PREFIX}*" 2>/dev/null || true)
     # A GitHub merge has the pull request title as first body line, else the subject counts.
-    changes=$(git log --first-parent --merges --format='%s%x1f%b%x1e' ${since:+"$since..HEAD"} |
+    changes=$({ git log --first-parent --merges --format='%s%x1f%b%x1e' ${since:+"$since..HEAD"} 2>/dev/null || true; } |
       awk 'BEGIN { RS = "\x1e"; FS = "\x1f" } { sub(/^\n+/, ""); if ($0 == "") next; split($2, body, "\n");
         t = body[1] != "" ? body[1] : $1; print "- " t }' | head -20)
     [ -n "$changes" ] || changes='- …'
+    # Better than pull request titles: the changelog section of the language,
+    # already written for users (de-DE ← CHANGELOG.de.md, en-US ← CHANGELOG.md).
+    lang_changes() {
+      local section
+      section=$(wb_changelog_section_in "$(wb_version name)" "$(wb_changelog_file "${1%%-*}")")
+      if [ -n "$section" ]; then grep -E '^- ' <<<"$section" || echo "$changes"; else echo "$changes"; fi
+    }
     for lang in $WB_STORE_LANGS; do
       file="store/ios/testflight/whats_new_${build}_$lang.txt"
       [ -f "$file" ] && continue
       mkdir -p "$(dirname "$file")"
-      printf 'ENTWURF – in Nutzersprache umschreiben, dann diese Zeile löschen.\n\n%s\n' "$changes" >"$file"
+      printf 'ENTWURF – kürzen und für Tester formulieren, dann diese Zeile löschen.\n\n%s\n' "$(lang_changes "$lang")" >"$file"
       say "Draft: $file"
     done
     if [ ! -f "$play" ]; then
       mkdir -p "$(dirname "$play")"
-      for lang in $WB_STORE_LANGS; do printf '<%s>\nENTWURF\n%s\n</%s>\n' "$lang" "$changes" "$lang"; done >"$play"
+      for lang in $WB_STORE_LANGS; do
+        printf '<%s>\nENTWURF – auf 500 Zeichen kürzen\n%s\n</%s>\n' "$lang" "$(lang_changes "$lang")" "$lang"
+      done >"$play"
       say "Draft: $play"
     fi
   fi
@@ -511,6 +521,84 @@ wb_sim() {
 }
 
 # ---------------------------------------------------------------------------
+# Changelog (STANDARD.md "Changelog"): one format in every project
+
+# The changelog of language $1: CHANGELOG.md for the first of
+# WB_CHANGELOG_LANGS, CHANGELOG.<lang>.md for the others.
+wb_changelog_file() {
+  local first=${WB_CHANGELOG_LANGS%% *}
+  if [ "$1" = "$first" ]; then echo "$WB_CHANGELOG"; else echo "${WB_CHANGELOG%.md}.$1.md"; fi
+}
+
+# Heading of unreleased changes per language.
+wb_unreleased_heading() { case "$1" in de) echo "Unveröffentlicht" ;; *) echo "Unreleased" ;; esac; }
+
+# The section "## <version>…" (or "## Unreleased") of changelog file $2.
+wb_changelog_section_in() {
+  local v=$1 file=$2
+  [ -f "$file" ] || return 0
+  WB_CHANGELOG=$file wb_changelog_section "$v"
+}
+
+# Checks (or with --draft prepares) the changelog of the version in
+# pubspec.yaml in every language:
+#   - a section "## <version> – <YYYY-MM-DD>" exists, without ENTWURF;
+#   - --draft turns "## Unreleased" (collected while working) into that
+#     section with today's date, or – without one – drafts it from the pull
+#     requests merged since the last app tag, marked ENTWURF until written.
+# Changes go into the files only; commit them in a pull request.
+wb_changelog() {
+  local draft=false
+  if [ "${1:-}" = --draft ]; then draft=true; shift; fi
+  local v=${1:-$(wb_version name)} lang file problems=0 today unrel
+  today=$(date +%F)
+  for lang in $WB_CHANGELOG_LANGS; do
+    file=$(wb_changelog_file "$lang")
+    unrel=$(wb_unreleased_heading "$lang")
+    if $draft; then
+      [ -f "$file" ] || printf '# %s\n\n' "$([ "$lang" = de ] && echo Änderungen || echo Changelog)" >"$file"
+      if [ -z "$(wb_changelog_section_in "$v" "$file")" ]; then
+        if grep -qE "^## +$unrel *$" "$file"; then
+          sed -i.bak -E "s/^## +$unrel *$/## $v – $today/" "$file" && rm -f "$file.bak"
+          say "$file: \"$unrel\" is now \"$v – $today\""
+        else
+          local since changes heading
+          since=$(git describe --tags --abbrev=0 --match "${WB_APP_TAG_PREFIX}*" 2>/dev/null || true)
+          changes=$({ git log --first-parent --merges --format='%s%x1f%b%x1e' ${since:+"$since..HEAD"} 2>/dev/null || true; } |
+            awk 'BEGIN { RS = "\x1e"; FS = "\x1f" } { sub(/^\n+/, ""); if ($0 == "") next; split($2, body, "\n");
+              t = body[1] != "" ? body[1] : $1; print "- " t }' | head -20)
+          heading=$([ "$lang" = de ] && echo "### Neu" || echo "### New")
+          # After the title and its intro: before the first "## ".
+          awk -v sec="## $v – $today" -v head="$heading" -v body="${changes:-- …}" '
+            !done && /^## / { print sec "\n\nENTWURF – in Nutzersprache umschreiben, dann diese Zeile löschen.\n\n" head "\n\n" body "\n"; done = 1 }
+            { print }
+            END { if (!done) print "\n" sec "\n\nENTWURF – in Nutzersprache umschreiben, dann diese Zeile löschen.\n\n" head "\n\n" body }' "$file" >"$file.tmp"
+          mv "$file.tmp" "$file"
+          say "$file: draft for $v from the merged pull requests"
+        fi
+      fi
+    fi
+    local section
+    section=$(wb_changelog_section_in "$v" "$file")
+    if [ ! -f "$file" ]; then
+      warn "missing: $file"
+      problems=1
+    elif [ -z "$section" ]; then
+      warn "$file: no section \"## $v – <date>\""
+      problems=1
+    elif grep -q ENTWURF <<<"$section"; then
+      warn "$file: section $v is still a draft"
+      problems=1
+    elif ! grep -qE "^## +\[?$v\]?( \([^)]*\))? – [0-9]{4}-[0-9]{2}-[0-9]{2}" "$file"; then
+      warn "$file: heading of $v should read \"## $v – YYYY-MM-DD\""
+      problems=1
+    fi
+  done
+  [ "$problems" = 0 ] || die "changelog of $v incomplete (werkbank changelog --draft)"
+  say "Changelog of $v complete ($WB_CHANGELOG_LANGS)"
+}
+
+# ---------------------------------------------------------------------------
 # Release (STANDARD.md "Release"): the same phases in every project
 
 # Version of product $1: WB_VERSION_FILE_<product> (default pubspec.yaml),
@@ -617,8 +705,8 @@ wb_release() {
   [ "$(git rev-parse HEAD)" = "$(git rev-parse origin/main 2>/dev/null)" ] || problems+=("main differs from origin/main")
   for p in "${todo[@]}"; do
     v=$(wb_product_version "$p")
-    if [ -f "$WB_CHANGELOG" ] && [ -z "$(wb_changelog_section "${v%%+*}")" ] && [ -z "$(wb_changelog_section "$v")" ]; then
-      problems+=("$WB_CHANGELOG has no section \"## ${v%%+*}\" for $p")
+    if ! (wb_changelog "${v%%+*}" >/dev/null 2>&1); then
+      problems+=("changelog has no finished section \"## ${v%%+*} – <date>\" for $p (werkbank changelog --draft)")
     fi
     case " $(wb_platforms "$p") " in
       *" ios "* | *" android "*)

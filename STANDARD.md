@@ -66,6 +66,7 @@ Watch-App, Seiten-Deploy), steht als eigener Befehl daneben.
 | `verify` | vor jedem Push: Layout, Übersetzungen, Format, Analyse, Tests, dann die Hooks `verify_quick_extra` und `verify_extra` | `werkbank verify` |
 | `android` | signiertes AAB (baut fastlane oder ein Projektskript, nimmt `werkbank collect aab <pfad> [variante]` es auf) nach `build/release/<app>-<version>.aab`, Prüfung gegen den Debug-Schlüssel, Symbole wegsichern | `werkbank android` |
 | `ios` | IPA nach `build/release/<app>-<version>.ipa`, mit `--upload` zu App Store Connect | `werkbank ios` |
+| `changelog [--draft]` | Changelog-Abschnitt der Version in allen Sprachen fertig? `--draft` macht aus „Unreleased“ die Version | `werkbank changelog` |
 | `notes [--draft]` | Release-Texte des Builds vollständig? `--draft` legt Entwürfe aus den gemergten PRs an | `werkbank notes` |
 | `upload-apple <xcarchive>` | Archiv (iOS, macOS) zu App Store Connect, mit dem in Xcode angemeldeten Konto | `werkbank upload-apple` |
 | `upload-play [aab] [track]` | AAB mit Versionshinweisen in eine Play-Spur (Dienstkonto) | `werkbank upload-play` |
@@ -105,6 +106,38 @@ sonst `<p>-v`) und Plattformen (`WB_PLATFORMS_<p>`, für die App die vorhandenen
 `android`, `macos`). Ein Produkt, dessen Tag es schon gibt, gilt als veröffentlicht und wird
 übersprungen. Der Changelog ist die eine Quelle für GitHub-Release, Seite und Store-Texte.
 
+### Changelog
+
+Jedes Projekt führt **`CHANGELOG.md`** (englisch) und **`CHANGELOG.de.md`** (deutsch), Punkt
+für Punkt gleich (Sprachen: `WB_CHANGELOG_LANGS`, Standard `en de`). Aus ihm entstehen der
+Text des GitHub-Release, die Änderungsseite der Landingpage (per Hugo-Mount, wie bei
+Panzergefecht) und die Entwürfe der Store-Texte.
+
+```markdown
+# Changelog
+
+Ein, zwei Sätze, was hier steht.
+
+## Unreleased                         ← sammelt während der Arbeit (de: „Unveröffentlicht“)
+
+## 1.9.6 – 2026-11-04                 ← Version ohne Build, ISO-Datum; Build optional: 1.9.6 (29)
+
+### New                               ← de: Neu / Verbessert / Behoben, nur was vorkommt
+- Ein Satz je Änderung, aus Sicht der Nutzer
+### Improved
+### Fixed
+```
+
+**Aktualisieren:** Wer etwas für Nutzer Sichtbares mergt, ergänzt es im selben PR unter
+`## Unreleased` in beiden Sprachen. Vor dem Release macht `werkbank changelog --draft` daraus
+`## <version> – <datum>` (ohne gesammelte Punkte: Entwurf aus den PR-Titeln, mit `ENTWURF`
+markiert); das kommt per PR auf `main`. `release` verweigert sich ohne fertigen Abschnitt.
+
+**Formulieren:** Was ändert sich für Nutzer, nicht wie es gebaut ist; keine PR-Nummern,
+Klassen oder Dateinamen. Deutsch mit „du“, Englisch im selben Ton. Ein Punkt, ein Satz (zwei,
+wenn es nicht anders geht). Erst das Wichtigste. Bibliotheken (Horizont, werkbank) dürfen
+technisch schreiben und haben zusätzlich `### Upgrade` mit dem, was beim Wechsel zu tun ist.
+
 ### Release-Texte
 
 Zu jedem Store-Build gehören Texte, die zum Upload fertig daliegen:
@@ -114,8 +147,8 @@ store/ios/testflight/whats_new_<build>_<de-DE|en-US>.txt   „Was testen“ für
 store/android/play-notes-<build>.txt                      ein Block je Sprache: <de-DE>…</de-DE>, je ≤ 500 Zeichen
 ```
 
-`werkbank notes --draft` legt fehlende als Entwurf aus den seit dem letzten App-Tag
-(`WB_APP_TAG_PREFIX`) gemergten PRs an, mit der Zeile `ENTWURF`. Solange sie drinsteht,
+`werkbank notes --draft` legt fehlende als Entwurf aus dem Changelog-Abschnitt der Version an
+(ohne ihn aus den seit dem letzten App-Tag gemergten PRs), mit der Zeile `ENTWURF`. Solange sie drinsteht,
 gilt der Text als fehlend: Die PR-Titel sind englisch und technisch, die Texte schreibt
 Claude oder du in Nutzersprache. `werkbank notes` prüft und legt den Play-Block in die
 Zwischenablage; `upload-play` nimmt ihn mit.
@@ -199,7 +232,7 @@ optional; Vorlage: `werkbank.conf.example` im werkbank-Repo.
 | `WB_STORE_LANGS` | `de-DE en-US` | Sprachen der Release-Texte |
 | `WB_PLAY_PACKAGE`, `WB_PLAY_KEY`, `WB_PLAY_TRACK`, `WB_PLAY_STATUS` | –, `~/keys/<app>-play.json`, `internal`, `completed` | Upload zu Google Play |
 | `WB_PRODUCTS`, `WB_VERSION_FILE_<p>`, `WB_TAG_PREFIX_<p>`, `WB_PLATFORMS_<p>` | `app`, `pubspec.yaml`, `<p>-v`, Plattformordner | Produkte des Release |
-| `WB_CHANGELOG`, `WB_GH_RELEASE_REPO` | `CHANGELOG.md`, – | Changelog und Repo der GitHub-Releases |
+| `WB_CHANGELOG`, `WB_CHANGELOG_LANGS`, `WB_GH_RELEASE_REPO` | `CHANGELOG.md`, `en de`, – | Changelog (weitere Sprachen als `CHANGELOG.<lang>.md`) und Repo der GitHub-Releases |
 | `WB_SITES`, `WB_RELEASE_SITES` | – | Seiten und welche der Release live stellt |
 | `release_<p>`, `build_<plattform>`, `verify_release`, `release_manual`, `site_post_<name>`, `site_deploy_<name>` | – | Hooks des Release und der Seiten |
 | `WB_DEVICETEST_TARGETS` | alle `integration_test/*_test.dart` | Tests für `devicetest` |
