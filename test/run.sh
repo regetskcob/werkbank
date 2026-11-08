@@ -296,6 +296,21 @@ check "push: a commit after verify gets no status, the push still happens" \
    [ ! -s "$GH_LOG" ] && grep -q "CI runs in full" "$tmp/err" &&
    [ "$(git --git-dir="$tmp/stamp-origin.git" rev-parse main)" = "$(git -C "$st" rev-parse HEAD)" ]'
 
+sw wb_stamp_verified >/dev/null
+git -C "$st" -c user.name=t -c user.email=t@e tag -a v1 -m v1
+check "push-tag: the tag is pushed and the stamped commit gets werkbank/verify" \
+  'export GH_LOG="$tmp/gh3.log"; PATH="$tmp/ghbin:$PATH" sw wb_push_tag v1 >/dev/null 2>&1 &&
+   git --git-dir="$tmp/stamp-origin.git" rev-parse -q --verify refs/tags/v1 >/dev/null &&
+   grep -q "statuses/$(git -C "$st" rev-parse HEAD) -f state=success -f context=werkbank/verify" "$GH_LOG"'
+check "stamp: a named stamp gets its own status werkbank/<name>" \
+  'export GH_LOG="$tmp/gh4.log"; sw wb_stamp smoke >/dev/null && PATH="$tmp/ghbin:$PATH" sw wb_push -q >/dev/null 2>&1 &&
+   grep -q "context=werkbank/smoke" "$GH_LOG" && grep -q "context=werkbank/verify" "$GH_LOG"'
+git -C "$st" -c user.name=t -c user.email=t@e commit -q --allow-empty -m three
+git -C "$st" -c user.name=t -c user.email=t@e tag -a v2 -m v2
+check "push-tag: a tag on a commit verify did not check gets no status" \
+  'export GH_LOG="$tmp/gh5.log"; PATH="$tmp/ghbin:$PATH" sw wb_push_tag v2 >/dev/null 2>"$tmp/err" &&
+   [ ! -s "$GH_LOG" ] && grep -q "CI runs in full" "$tmp/err"'
+
 expect_fail "android without key.properties" android
 expect_fail "unknown command" frobnicate
 
