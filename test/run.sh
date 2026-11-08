@@ -252,6 +252,11 @@ check "site-deploy --live: gh-pages with CNAME and .nojekyll" \
   'PATH="$tmp/bin:$PATH" WB_GIT_BASE="$tmp/gh/" rr site-deploy web --live >/dev/null 2>&1 &&
    [ "$(git --git-dir="$tmp/gh/o/pages.git" show gh-pages:CNAME)" = example.org ] && git --git-dir="$tmp/gh/o/pages.git" show gh-pages:.nojekyll >/dev/null &&
    git --git-dir="$tmp/gh/o/pages.git" show gh-pages:index.html | grep -q site'
+mkdir -p "$tmp/failbin"
+printf '#!/usr/bin/env bash\necho "ERROR render failed" >&2\nexit 1\n' >"$tmp/failbin/hugo"
+chmod +x "$tmp/failbin/hugo"
+check "site-deploy: a failing hugo build fails the command" '! PATH="$tmp/failbin:$PATH" rr site-deploy web >/dev/null 2>&1'
+check "site-deploy: a failing hugo build deploys nothing" '! PATH="$tmp/failbin:$PATH" WB_GIT_BASE="$tmp/gh/" rr site-deploy web --live 2>&1 | grep -q "pushed"'
 git clone -q "$tmp/gh/o/pages.git" "$tmp/pages-edit" -b gh-pages
 mkdir -p "$tmp/pages-edit/socials" && echo social >"$tmp/pages-edit/socials/index.html"
 git -C "$tmp/pages-edit" add -A && git -C "$tmp/pages-edit" -c user.name=t -c user.email=t@e commit -q -m socials && git -C "$tmp/pages-edit" push -q
