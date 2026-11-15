@@ -194,6 +194,8 @@ git -C "$rel" add -A
 git -C "$rel" commit -q -m changelog
 git -C "$rel" push -q
 check "release: changelog section without the heading" '[ "$(cd "$rel" && . "$(dirname "$wb")/../lib/common.sh" && wb_load_conf && wb_changelog_section 2.0.0)" = "- new" ]'
+check "release: dry run asks for the release review" '! rr release --dry-run 2>"$tmp/err" >/dev/null && grep -q "no release review for HEAD" "$tmp/err"'
+check "reviewed: notes HEAD as reviewed" 'rr reviewed >/dev/null 2>&1 && [ "$(cat "$rel/.git/werkbank-stamp-review")" = "$(git -C "$rel" rev-parse HEAD)" ]'
 check "release: dry run is ready and changes nothing" 'rr release --dry-run 2>&1 | grep "would release app 2.0.0+7" >/dev/null && [ -z "$(git -C "$rel" tag)" ] && [ ! -e "$rel/build/calls" ]'
 echo dirty >"$rel/dirty.txt"
 check "release: refuses uncommitted changes" '! rr release >/dev/null 2>&1 && [ -z "$(git -C "$rel" tag)" ]'
@@ -302,6 +304,14 @@ check "push: a commit after verify gets no status, the push still happens" \
    [ "$(git --git-dir="$tmp/stamp-origin.git" rev-parse main)" = "$(git -C "$st" rev-parse HEAD)" ]'
 
 sw wb_stamp_verified >/dev/null
+git -C "$st" -c user.name=t -c user.email=t@e tag -a v0 -m v0
+check "push-tag: refused without a release review" \
+  'PATH="$tmp/ghbin:$PATH" GH_LOG=/dev/null sw wb_push_tag v0 >/dev/null 2>"$tmp/err"; [ $? -ne 0 ] &&
+   grep -q "no release review" "$tmp/err" &&
+   ! git --git-dir="$tmp/stamp-origin.git" rev-parse -q --verify refs/tags/v0 >/dev/null'
+check "push-tag: WB_NO_REVIEW=1 tags without review" \
+  'PATH="$tmp/ghbin:$PATH" GH_LOG=/dev/null WB_NO_REVIEW=1 sw wb_push_tag v0 >/dev/null 2>&1'
+sw wb_stamp review >/dev/null
 git -C "$st" -c user.name=t -c user.email=t@e tag -a v1 -m v1
 check "push-tag: the tag is pushed and the stamped commit gets werkbank/verify" \
   'export GH_LOG="$tmp/gh3.log"; PATH="$tmp/ghbin:$PATH" sw wb_push_tag v1 >/dev/null 2>&1 &&
@@ -312,9 +322,22 @@ check "stamp: a named stamp gets its own status werkbank/<name>" \
    grep -q "context=werkbank/smoke" "$GH_LOG" && grep -q "context=werkbank/verify" "$GH_LOG"'
 git -C "$st" -c user.name=t -c user.email=t@e commit -q --allow-empty -m three
 git -C "$st" -c user.name=t -c user.email=t@e tag -a v2 -m v2
+check "review-range: from the last tag before HEAD" '[[ "$(sw wb_review_range)" =~ ^v[01]\.\.HEAD$ ]]'
 check "push-tag: a tag on a commit verify did not check gets no status" \
   'export GH_LOG="$tmp/gh5.log"; PATH="$tmp/ghbin:$PATH" sw wb_push_tag v2 >/dev/null 2>"$tmp/err" &&
    [ ! -s "$GH_LOG" ] && grep -q "CI runs in full" "$tmp/err"'
+printf 'version: 1.0.1\n' >"$st/pubspec.yaml"
+git -C "$st" add pubspec.yaml
+git -C "$st" -c user.name=t -c user.email=t@e commit -q -m bump
+git -C "$st" -c user.name=t -c user.email=t@e tag -a v3 -m v3
+check "push-tag: only a version bump since the review is fine" \
+  'PATH="$tmp/ghbin:$PATH" GH_LOG=/dev/null sw wb_push_tag v3 >/dev/null 2>&1'
+echo x >"$st/code.dart"
+git -C "$st" add code.dart
+git -C "$st" -c user.name=t -c user.email=t@e commit -q -m code
+git -C "$st" -c user.name=t -c user.email=t@e tag -a v4 -m v4
+check "push-tag: code changed since the review is refused" \
+  '! PATH="$tmp/ghbin:$PATH" GH_LOG=/dev/null sw wb_push_tag v4 >/dev/null 2>&1'
 
 expect_fail "android without key.properties" android
 expect_fail "unknown command" frobnicate
