@@ -664,14 +664,18 @@ wb_site_blog() {
 # prints its UDID. Named simulators keep store shots on the same device.
 wb_sim() {
   local name=${1:?name} type=${2:?device type} family=${3:-iOS} id runtime
-  id=$(xcrun simctl list devices available | grep -F "    $name (" | head -1 |
+  # No match is the normal case for a new simulator: grep exits 1, which
+  # under pipefail would end the script silently before the create branch.
+  id=$(xcrun simctl list devices available | { grep -F "    $name (" || true; } | head -1 |
     sed -E 's/.*\(([0-9A-F-]{36})\).*/\1/')
   if [ -z "$id" ]; then
-    runtime=$(xcrun simctl list runtimes available | grep "^$family " | tail -1 | awk '{print $NF}')
+    runtime=$(xcrun simctl list runtimes available | { grep "^$family " || true; } | tail -1 | awk '{print $NF}')
     [ -n "$runtime" ] || die "no $family runtime installed (Xcode → Settings → Components)"
-    id=$(xcrun simctl create "$name" "$type" "$runtime")
+    echo "Creating simulator \"$name\" ($type, $runtime)" >&2
+    id=$(xcrun simctl create "$name" "$type" "$runtime") ||
+      die "could not create simulator \"$name\" ($type, $runtime)"
   fi
-  xcrun simctl bootstatus "$id" -b >/dev/null
+  xcrun simctl bootstatus "$id" -b >/dev/null || die "could not boot simulator \"$name\" ($id)"
   echo "$id"
 }
 
