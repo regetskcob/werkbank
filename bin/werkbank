@@ -31,6 +31,9 @@
 #                                      from the merged pull requests; Play block to the clipboard
 #   werkbank upload-apple <xcarchive>  to App Store Connect with the Xcode account (no API key)
 #   werkbank upload-play [aab] [track] to a Play track with the release notes (service account)
+#   werkbank asc [build] [--group <name>]
+#                                      App Store Connect texts from store/ios/ (API key); with a
+#                                      build its "What to test", with --group its internal group
 #   werkbank devicetest [--device <id>] [test …]
 #                                      integration tests on every connected device in turn,
 #                                      report in build/devicetest/<time>/report.md
@@ -83,6 +86,7 @@ case "$cmd" in
   notes) wb_store_notes "$@" ;;
   upload-apple) wb_upload_apple "$@" ;;
   upload-play) wb_upload_play "$@" ;;
+  asc) wb_asc "$@" ;;
   devicetest) wb_devicetest "$@" ;;
   release) wb_release "$@" ;;
   site-deploy) wb_site_deploy "$@" ;;
