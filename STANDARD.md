@@ -71,6 +71,7 @@ Watch-App, Seiten-Deploy), steht als eigener Befehl daneben.
 | `notes [--draft]` | Release-Texte des Builds vollständig? `--draft` legt Entwürfe aus den gemergten PRs an | `werkbank notes` |
 | `upload-apple <xcarchive>` | Archiv (iOS, macOS) zu App Store Connect, mit dem in Xcode angemeldeten Konto | `werkbank upload-apple` |
 | `resolved` | schlägt fehl, solange ein Store-Build `ios/**/Package.resolved` oder `macos/**/Package.resolved` geändert hat | `werkbank resolved` |
+| `asc [build] [--group <name>]` | App-Store-Connect-Texte aus `store/ios/` abgleichen (API-Schlüssel); mit Build dessen „Was testen“, mit `--group` die interne TestFlight-Gruppe | `werkbank asc` |
 | `upload-play [aab] [track]` | AAB mit Versionshinweisen in eine Play-Spur (Dienstkonto) | `werkbank upload-play` |
 | `devicetest` | Integrationstests nacheinander auf allen angeschlossenen Geräten, Bericht in `build/devicetest/` | `werkbank devicetest` |
 | `shots` | Rohaufnahmen nach `store/raw/` | Projekt (Simulator über `werkbank sim`) |
@@ -243,6 +244,27 @@ Ergebnis für den Nutzer; ein eigener Kürzungsschritt fällt damit weg.
   Nutzer und Berechtigungen → Dienstkonto einladen, Rechte „Releases verwalten“), Schlüssel
   unter `WB_PLAY_KEY`. Spur `WB_PLAY_TRACK` (Standard `internal`), solange die App nicht
   veröffentlicht ist `WB_PLAY_STATUS=draft`. Nur Python und openssl, kein fastlane.
+
+### App Store Connect
+
+`werkbank asc` gleicht App Store Connect mit `store/ios/` ab, über den API-Schlüssel und ohne
+fastlane (nur Python und openssl). Es schreibt nur Felder, zu denen eine Datei da ist, und sagt
+je Feld, was sich geändert hat; `WB_DRY_RUN=1` zeigt es nur. Bundle-ID in `WB_ASC_BUNDLE`.
+
+```
+store/ios/metadata/<lang>/name.txt, subtitle.txt, privacy_url.txt          App-Infos
+store/ios/metadata/<lang>/description.txt, keywords.txt, promotional_text.txt,
+                         support_url.txt, marketing_url.txt                 Version in Vorbereitung
+store/ios/metadata/review_information/first_name.txt, last_name.txt,
+                         email_address.txt, phone_number.txt, notes.txt      Kontakt für das Review
+store/ios/testflight/description_<lang>.txt, feedback_email.txt             TestFlight-Beschreibung
+store/ios/testflight/whats_new_<build>_<lang>.txt                           „Was testen“ je Build
+```
+
+Versionstexte schreibt es nur, solange in App Store Connect eine Version in Vorbereitung ist;
+die Version legt man dort selbst an. Screenshots lädt es noch nicht hoch. Kontaktdaten des
+Reviews sind persönlich: In einem öffentlichen Repo gehören sie nicht nach `store/`, dann bleibt
+`review_information/` weg und man pflegt sie in App Store Connect.
 
 ### Gerätetest
 

@@ -339,6 +339,12 @@ git -C "$st" -c user.name=t -c user.email=t@e tag -a v4 -m v4
 check "push-tag: code changed since the review is refused" \
   '! PATH="$tmp/ghbin:$PATH" GH_LOG=/dev/null sw wb_push_tag v4 >/dev/null 2>&1'
 
+expect_fail "asc without WB_ASC_BUNDLE" asc
+check "asc: DER signature becomes r||s of 32 bytes each" \
+  'python3 -c "import sys; sys.path.insert(0, \"$(dirname "$wb")/../lib\"); import asc; \
+r = asc.der_to_raw(bytes([0x30, 0x46, 0x02, 0x21, 0]) + bytes([0x80] * 32) + bytes([0x02, 0x21, 0]) + bytes([0x81] * 32)); \
+assert r == bytes([0x80] * 32 + [0x81] * 32); \
+assert asc.der_to_raw(bytes([0x30, 0x06, 0x02, 0x01, 5, 0x02, 0x01, 7])) == bytes(31) + bytes([5]) + bytes(31) + bytes([7])"'
 expect_fail "android without key.properties" android
 expect_fail "unknown command" frobnicate
 

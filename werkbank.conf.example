@@ -42,6 +42,7 @@
 # releases (drafts list what was merged since), store languages, Play.
 #WB_APP_TAG_PREFIX='app-v'
 #WB_STORE_LANGS='de-DE en-US'
+#WB_ASC_BUNDLE='de.example.app'         # iOS bundle id, for werkbank asc
 #WB_PLAY_PACKAGE='de.example.app'
 #WB_PLAY_KEY=~/keys/my-app-play.json   # default ~/keys/<app>-play.json
 #WB_PLAY_TRACK='alpha'                  # internal (default), alpha = closed test, beta, production

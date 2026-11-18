@@ -43,6 +43,7 @@ wb_load_conf() {
   WB_APP_TAG_PREFIX="v"
   WB_STORE_LANGS="de-DE en-US"
   WB_PLAY_PACKAGE=""
+  WB_ASC_BUNDLE=""
   WB_PLAY_KEY=""
   WB_PLAY_TRACK="internal"
   WB_PLAY_STATUS="completed"
@@ -590,6 +591,25 @@ wb_upload_play() {
   say "Uploading $(basename "$aab") to Play ($track)"
   python3 "$WB_LIB/play_upload.py" --key "$WB_PLAY_KEY" --package "$WB_PLAY_PACKAGE" --aab "$aab" \
     --track "$track" --status "$WB_PLAY_STATUS" --notes "$notes" --langs "$WB_STORE_LANGS" ${WB_DRY_RUN:+--dry-run}
+}
+
+# Brings App Store Connect in line with store/ios/ (STANDARD.md "App Store Connect"):
+# app and version texts, review contact, TestFlight texts and, with a build
+# number, that build's "What to test" and its internal group. Arguments:
+# [build] [--group <name>]; WB_DRY_RUN=1 only prints what would change.
+wb_asc() {
+  [ -n "$WB_ASC_BUNDLE" ] || die "WB_ASC_BUNDLE missing in tool/werkbank.conf (bundle id of the iOS app)"
+  wb_asc_key >/dev/null
+  local args=()
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --group) args+=(--group "${2:?group name}"); shift 2 ;;
+      *) args+=(--build "$1"); shift ;;
+    esac
+  done
+  [ -d store/ios ] || die "store/ios/ missing (STANDARD.md, store/)"
+  ASC_KEY_PATH=$(wb_asc_key) python3 "$WB_LIB/asc.py" --bundle "$WB_ASC_BUNDLE" --store store/ios \
+    --langs "$WB_STORE_LANGS" ${args[@]+"${args[@]}"} ${WB_DRY_RUN:+--dry-run}
 }
 
 # ---------------------------------------------------------------------------
